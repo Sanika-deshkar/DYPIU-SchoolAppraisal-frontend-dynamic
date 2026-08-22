@@ -7,4 +7,18 @@ export default defineConfig(({ mode }) => ({
   root: fileURLToPath(new URL('.', import.meta.url)),
   base: mode === 'production' || mode === 'vm' ? '/AAA/' : '/',
   plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:9000',
+        changeOrigin: true,
+      },
+      '/uploads': {
+        target: 'http://localhost:9000',
+        changeOrigin: true,
+      },
+    },
+  },
 }))
+

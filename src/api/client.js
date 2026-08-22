@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const runtimeApiBaseUrl = globalThis.__APP_CONFIG__?.VITE_API_BASE_URL;
-const apiBaseUrl = runtimeApiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+const apiBaseUrl = runtimeApiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? "http://localhost:9000";
 const loginPath = import.meta.env.MODE === "vm" ? "/AAA/login" : "/login";
 
 const apiClient = axios.create({
@@ -75,6 +75,8 @@ const storeUserProfile = (profile = {}) => {
   setSessionValue("auditorRole", auditorRole);
   setSessionValue("role", role);
   setSessionValue("academicYear", profile.academicYear || profile.currentAcademicYear || "");
+  setSessionValue("universityId", profile.universityId || "");
+  setSessionValue("universityCode", profile.universityCode || "");
 };
 
 const storeTokenSession = (accessToken, refreshToken) => {
@@ -94,8 +96,11 @@ const storeTokenSession = (accessToken, refreshToken) => {
     post: claims.post,
     currentAcademicYear: claims.currentAcademicYear,
     administrativePosts: claims.administrativePosts,
+    universityId: claims.universityId,
+    universityCode: claims.universityCode,
   });
 };
+
 
 export const clearAuthState = () => {
   sessionStorage.clear();
@@ -109,12 +114,82 @@ const redirectToLogin = () => {
   }
 };
 
+const isDebugLoggingEnabled = () => {
+  return import.meta.env.DEV || import.meta.env.VITE_API_DEBUG_LOGGING === "true";
+};
+
+const generateCorrelationId = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return "c-" + Math.random().toString(36).substring(2, 15) + "-" + Date.now().toString(36);
+};
+
+const SENSITIVE_KEYS = new Set([
+  "password", "confirmpassword", "currentpassword", "newpassword",
+  "token", "accesstoken", "refreshtoken", "jwt", "authorization",
+  "cookie", "secret", "apikey", "clientsecret", "privatekey"
+]);
+
+export const sanitizePayload = (data, depth = 0) => {
+  if (data == null || depth > 5) return data;
+  if (typeof data === "string") {
+    if (data.length > 50000) {
+      return data.substring(0, 2000) + `... [TRUNCATED originalLength=${data.length}]`;
+    }
+    return data;
+  }
+  if (typeof data !== "object") return data;
+  if (typeof FormData !== "undefined" && data instanceof FormData) {
+    return "[FormData payload]";
+  }
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    return `[Blob size=${data.size} type=${data.type}]`;
+  }
+  if (Array.isArray(data)) {
+    return data.slice(0, 100).map((item) => sanitizePayload(item, depth + 1));
+  }
+
+  const sanitized = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (SENSITIVE_KEYS.has(key.toLowerCase())) {
+      sanitized[key] = "[REDACTED]";
+    } else {
+      sanitized[key] = sanitizePayload(value, depth + 1);
+    }
+  }
+  return sanitized;
+};
+
 apiClient.interceptors.request.use((config) => {
   const token = sessionStorage.getItem("token") || localStorage.getItem("token");
+  config.headers = config.headers || {};
   if (token) {
-    config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  const correlationId = config.headers["X-Correlation-Id"] || config.headers["X-Correlation-ID"] || generateCorrelationId();
+  config.headers["X-Correlation-Id"] = correlationId;
+  config.metadata = { startTime: Date.now(), correlationId };
+
+  if (isDebugLoggingEnabled()) {
+    try {
+      console.groupCollapsed(`[API REQUEST] ${config.method?.toUpperCase()} ${config.url} (corr: ${correlationId})`);
+      console.log({
+        method: config.method?.toUpperCase(),
+        url: config.url,
+        baseURL: config.baseURL,
+        params: config.params,
+        body: sanitizePayload(config.data),
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+      console.groupEnd();
+    } catch {
+      // safe fallback
+    }
+  }
+
   return config;
 });
 
@@ -150,7 +225,8 @@ export const restoreAuthSession = async () => {
   const authKeys = [
     "token", "refreshToken", "userId", "email", "username", "name",
     "designation", "school", "post", "administrativePosts",
-    "accountType", "category", "auditorType", "auditorRole", "role", "academicYear"
+    "accountType", "category", "auditorType", "auditorRole", "role", "academicYear",
+    "universityId", "universityCode"
   ];
   authKeys.forEach((key) => {
     const val = localStorage.getItem(key);
@@ -158,6 +234,7 @@ export const restoreAuthSession = async () => {
       sessionStorage.setItem(key, val);
     }
   });
+
 
   const sessionToken = sessionStorage.getItem("token") || localStorage.getItem("token");
   const sessionRole = sessionStorage.getItem("role") || localStorage.getItem("role");
@@ -188,9 +265,60 @@ export const restoreAuthSession = async () => {
 };
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const durationMs = response.config?.metadata?.startTime
+      ? Date.now() - response.config.metadata.startTime
+      : 0;
+    const correlationId = response.headers?.["x-correlation-id"] || response.config?.metadata?.correlationId;
+
+    if (isDebugLoggingEnabled()) {
+      try {
+        console.groupCollapsed(`[API RESPONSE] ${response.config?.method?.toUpperCase()} ${response.config?.url} → ${response.status} (${durationMs}ms) [corr: ${correlationId}]`);
+        console.log({
+          method: response.config?.method?.toUpperCase(),
+          url: response.config?.url,
+          status: response.status,
+          durationMs,
+          correlationId,
+          data: sanitizePayload(response.data)
+        });
+        console.groupEnd();
+      } catch {
+        // safe fallback
+      }
+    }
+
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
+    const durationMs = originalRequest?.metadata?.startTime
+      ? Date.now() - originalRequest.metadata.startTime
+      : 0;
+    const correlationId = error.response?.headers?.["x-correlation-id"] ||
+                          error.response?.data?.correlationId ||
+                          originalRequest?.metadata?.correlationId;
+
+    // Structured error diagnostics
+    try {
+      console.groupCollapsed(`[API ERROR] ${originalRequest?.method?.toUpperCase()} ${originalRequest?.url} → ${error.response?.status || "NETWORK_ERROR"} (${durationMs}ms) [corr: ${correlationId}]`);
+      console.error({
+        method: originalRequest?.method?.toUpperCase(),
+        url: originalRequest?.url,
+        status: error.response?.status,
+        durationMs,
+        correlationId,
+        params: originalRequest?.params,
+        requestBody: sanitizePayload(originalRequest?.data),
+        responseBody: sanitizePayload(error.response?.data),
+        errorMessage: error.message,
+        errorCode: error.response?.data?.code || "UNKNOWN_ERROR"
+      });
+      console.groupEnd();
+    } catch {
+      // safe fallback
+    }
+
     if (
       error.response?.status === 401 &&
       originalRequest &&
@@ -248,4 +376,5 @@ export const getApiErrorMessage = (error, fallback = "Something went wrong. Plea
   fallback;
 
 export default apiClient;
+
 

@@ -1,7 +1,19 @@
 import axios from "axios";
 
-const runtimeApiBaseUrl = globalThis.__APP_CONFIG__?.VITE_API_BASE_URL;
-const apiBaseUrl = runtimeApiBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? "http://localhost:9000";
+const getApiBaseUrl = () => {
+  const runtime = globalThis.__APP_CONFIG__?.VITE_API_BASE_URL;
+  if (runtime && !runtime.startsWith("/AAA")) {
+    return runtime;
+  }
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl && !envUrl.startsWith("/AAA")) {
+    return envUrl;
+  }
+  // In development, empty string leverages Vite's dev proxy (/api -> http://localhost:9000)
+  return import.meta.env.DEV ? "" : "http://localhost:9000";
+};
+
+const apiBaseUrl = getApiBaseUrl();
 const loginPath = import.meta.env.MODE === "vm" ? "/AAA/login" : "/login";
 
 const apiClient = axios.create({
@@ -368,13 +380,48 @@ apiClient.interceptors.response.use(
   }
 );
 
-export const getApiErrorMessage = (error, fallback = "Something went wrong. Please try again.") =>
-  error?.response?.data?.message ||
-  error?.response?.data?.error ||
-  error?.response?.data ||
-  error?.message ||
-  fallback;
+export const getApiErrorMessage = (error, fallback = "Something went wrong. Please try again.") => {
+  if (!error) return fallback;
+
+  // 1. Direct message from structured ApiErrorResponse
+  if (error.response?.data?.message && typeof error.response.data.message === "string") {
+    return error.response.data.message;
+  }
+  // 2. Direct error field from ApiErrorResponse
+  if (error.response?.data?.error && typeof error.response.data.error === "string") {
+    return error.response.data.error;
+  }
+  // 3. String response body (excluding HTML 404 pages)
+  if (typeof error.response?.data === "string" && error.response.data.trim()) {
+    const trimmed = error.response.data.trim();
+    if (!trimmed.startsWith("<!DOCTYPE") && !trimmed.startsWith("<html")) {
+      return trimmed;
+    }
+  }
+  // 4. Specific HTTP status diagnostics
+  if (error.response?.status === 404) {
+    return "API endpoint not found (404). Please ensure API Gateway (port 9000) and auth service are running.";
+  }
+  if (error.response?.status === 401) {
+    return "Invalid email address or password.";
+  }
+  if (error.response?.status === 403) {
+    return "Access denied. You do not have permission to access this resource.";
+  }
+  if (error.response?.status === 429) {
+    return "Too many login attempts. Please wait a minute and try again.";
+  }
+  if (error.response?.status >= 500) {
+    return "Internal server error. Please check the backend service logs.";
+  }
+  if (error.code === "ERR_NETWORK" || error.message === "Network Error") {
+    return "Unable to connect to backend server. Please verify API Gateway (port 9000) is running.";
+  }
+
+  return error.message || fallback;
+};
 
 export default apiClient;
+
 
 

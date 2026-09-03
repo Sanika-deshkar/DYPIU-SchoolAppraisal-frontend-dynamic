@@ -3,12 +3,16 @@ import api from './client';
 const getSessionUniversityCode = () =>
   sessionStorage.getItem("universityCode") || localStorage.getItem("universityCode") || 'dypiu';
 
-export const fetchActiveSchema = async (auditType = 'academic', universityCode = null) => {
+const getSessionSchool = () =>
+  sessionStorage.getItem("userSchool") || localStorage.getItem("userSchool") || sessionStorage.getItem("school") || localStorage.getItem("school");
+
+export const fetchActiveSchema = async (auditType = 'academic', universityCode = null, school = null) => {
   try {
     const code = universityCode || getSessionUniversityCode();
-    const response = await api.get('/api/config/active', {
-      params: { auditType, universityCode: code },
-    });
+    const sch = school || getSessionSchool();
+    const params = { auditType, universityCode: code };
+    if (sch) params.school = sch;
+    const response = await api.get('/api/config/active', { params });
     return response.data;
   } catch (error) {
     console.warn('Failed to fetch active schema from backend, returning null for fallback:', error.message);

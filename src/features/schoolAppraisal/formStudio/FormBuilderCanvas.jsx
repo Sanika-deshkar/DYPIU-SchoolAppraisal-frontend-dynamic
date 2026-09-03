@@ -11,6 +11,8 @@ import {
   createField,
   updateField,
   deleteField,
+  copyTable,
+  getAvailableTables,
 } from './formStudioApi';
 
 export const FormBuilderCanvas = ({
@@ -42,6 +44,17 @@ export const FormBuilderCanvas = ({
     isEdit: false,
     data: { id: null, title: '', tableKey: '', isRepeatable: true, showTitle: true },
   });
+
+  // Copy Table Modal State
+  const [copyTableModal, setCopyTableModal] = useState({
+    show: false,
+    sectionId: null,
+    sourceTableId: '',
+    newTitle: '',
+    newTableKey: '',
+  });
+  const [availableTables, setAvailableTables] = useState([]);
+  const [loadingTables, setLoadingTables] = useState(false);
 
   // Field / Column Modal State
   const [fieldModal, setFieldModal] = useState({
@@ -198,6 +211,45 @@ export const FormBuilderCanvas = ({
       await loadTree();
     } catch (err) {
       alert('Error deleting table: ' + err.message);
+    }
+  };
+
+  const handleOpenCopyTable = async (secId) => {
+    setLoadingTables(true);
+    try {
+      const tables = await getAvailableTables();
+      setAvailableTables(tables || []);
+      setCopyTableModal({
+        show: true,
+        sectionId: secId,
+        sourceTableId: tables && tables.length > 0 ? String(tables[0].tableId) : '',
+        newTitle: tables && tables.length > 0 ? `${tables[0].title} (Copy)` : '',
+        newTableKey: '',
+      });
+    } catch (err) {
+      alert('Failed to load available tables: ' + err.message);
+    } finally {
+      setLoadingTables(false);
+    }
+  };
+
+  const handleExecuteCopyTable = async (e) => {
+    e.preventDefault();
+    if (!copyTableModal.sourceTableId) {
+      alert('Please select a source table to copy.');
+      return;
+    }
+    try {
+      await copyTable({
+        sourceTableId: Number(copyTableModal.sourceTableId),
+        targetSectionId: copyTableModal.sectionId,
+        newTitle: copyTableModal.newTitle,
+        newTableKey: copyTableModal.newTableKey,
+      });
+      setCopyTableModal({ ...copyTableModal, show: false });
+      await loadTree();
+    } catch (err) {
+      alert('Failed to copy table: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -511,15 +563,24 @@ export const FormBuilderCanvas = ({
               </div>
 
               {/* Tables in Section */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                 <h4 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '16px' }}>📊 Tables in Section</h4>
-                <button
-                  type="button"
-                  style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
-                  onClick={() => handleOpenAddTable(currentSection.id)}
-                >
-                  + Add New Table
-                </button>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    style={{ padding: '6px 14px', borderRadius: '7px', border: '1px solid #93c5fd', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+                    onClick={() => handleOpenCopyTable(currentSection.id)}
+                  >
+                    📋 Copy Table from Another Form
+                  </button>
+                  <button
+                    type="button"
+                    style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+                    onClick={() => handleOpenAddTable(currentSection.id)}
+                  >
+                    + Add New Table
+                  </button>
+                </div>
               </div>
 
               {currentSection.tables && currentSection.tables.length > 0 ? (
@@ -929,6 +990,133 @@ export const FormBuilderCanvas = ({
                   style={{ padding: '8px 18px', borderRadius: '7px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
                 >
                   Save Field
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Copy / Duplicate Table Modal */}
+      {copyTableModal.show && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1050, background: 'rgba(15,23,42,0.5)', display: 'grid', placeItems: 'center', padding: '20px' }}>
+          <div style={{ width: '100%', maxWidth: '580px', maxHeight: '90vh', background: '#fff', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '16px' }}>
+                📋 Copy Existing Table (Avoid Rework)
+              </h4>
+              <button
+                type="button"
+                style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px', color: '#64748b' }}
+                onClick={() => setCopyTableModal({ ...copyTableModal, show: false })}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleExecuteCopyTable} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ padding: '20px', overflowY: 'auto', display: 'grid', gap: '14px' }}>
+                <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
+                  Select an existing table from any appraisal schema in this university. All columns, validations, and settings will be copied into this section so you can customize them.
+                </p>
+
+                {loadingTables ? (
+                  <div style={{ textAlign: 'center', padding: '20px' }}>
+                    <div className="spinner-border text-primary spinner-border-sm" role="status"></div>
+                    <span style={{ marginLeft: '8px', fontSize: '13px', color: '#64748b' }}>Loading available tables...</span>
+                  </div>
+                ) : availableTables.length === 0 ? (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px', color: '#b91c1c', fontSize: '13px' }}>
+                    No tables available to copy. Create a table first or import a schema template.
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', marginBottom: '4px' }}>
+                        Source Table to Copy*
+                      </label>
+                      <select
+                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px' }}
+                        value={copyTableModal.sourceTableId}
+                        onChange={(e) => {
+                          const tId = e.target.value;
+                          const found = availableTables.find((t) => String(t.tableId) === String(tId));
+                          setCopyTableModal({
+                            ...copyTableModal,
+                            sourceTableId: tId,
+                            newTitle: found ? `${found.title} (Copy)` : copyTableModal.newTitle,
+                            newTableKey: found ? `${found.tableKey}_copy_${Date.now() % 1000}` : '',
+                          });
+                        }}
+                        required
+                      >
+                        {availableTables.map((t) => (
+                          <option key={t.tableId} value={t.tableId}>
+                            {t.title} — ({t.columnCount} columns) [Form: {t.schemaName}, Section: {t.sectionTitle}]
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Source Table Summary Badge */}
+                    {(() => {
+                      const sel = availableTables.find((t) => String(t.tableId) === String(copyTableModal.sourceTableId));
+                      if (!sel) return null;
+                      return (
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', fontSize: '12.5px' }}>
+                          <div><strong>Form Schema:</strong> {sel.schemaName} ({sel.auditType?.toUpperCase()})</div>
+                          <div><strong>Source Section:</strong> {sel.sectionTitle}</div>
+                          <div><strong>Original Key:</strong> <code>{sel.tableKey}</code> | <strong>Columns:</strong> {sel.columnCount} fields</div>
+                        </div>
+                      );
+                    })()}
+
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>
+                        New Table Title in this Section*
+                      </label>
+                      <input
+                        type="text"
+                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
+                        required
+                        value={copyTableModal.newTitle}
+                        onChange={(e) =>
+                          setCopyTableModal({ ...copyTableModal, newTitle: e.target.value })
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>
+                        New Table Unique Key (Optional - Auto generated if blank)
+                      </label>
+                      <input
+                        type="text"
+                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
+                        placeholder="e.g. research_publications_management"
+                        value={copyTableModal.newTableKey}
+                        onChange={(e) =>
+                          setCopyTableModal({ ...copyTableModal, newTableKey: e.target.value })
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div style={{ padding: '14px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  style={{ padding: '8px 16px', borderRadius: '7px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  onClick={() => setCopyTableModal({ ...copyTableModal, show: false })}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loadingTables || availableTables.length === 0}
+                  style={{ padding: '8px 18px', borderRadius: '7px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: (loadingTables || availableTables.length === 0) ? 0.6 : 1 }}
+                >
+                  📋 Copy Table & Columns
                 </button>
               </div>
             </form>

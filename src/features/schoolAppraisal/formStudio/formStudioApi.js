@@ -126,4 +126,27 @@ export const deleteUniversitySchool = async (universityId, schoolId) => {
   return res.data;
 };
 
+export const updateSchema = async (schemaId, payload) => {
+  const res = await apiClient.put(`/api/admin/config/schemas/${schemaId}`, payload);
+  return res.data;
+};
+
+export const cloneSchema = async (schemaId, payload) => {
+  const res = await apiClient.post(`/api/admin/config/schemas/${schemaId}/clone`, payload);
+  return res.data;
+};
+
+export const copyTable = async (payload) => {
+  const res = await apiClient.post('/api/admin/config/tables/copy', payload);
+  return res.data;
+};
+
+export const getAvailableTables = async (universityId, universityCode) => {
+  const params = {};
+  if (universityId) params.universityId = universityId;
+  if (universityCode) params.universityCode = universityCode;
+  const res = await apiClient.get('/api/admin/config/tables/available', { params });
+  return res.data || [];
+};
+
 

@@ -189,6 +189,11 @@ apiClient.interceptors.request.use((config) => {
     config.headers["X-University-Code"] = uCode;
   }
 
+  const userSchool = sessionStorage.getItem("userSchool") || localStorage.getItem("userSchool") || sessionStorage.getItem("school") || localStorage.getItem("school");
+  if (userSchool && !config.headers["X-User-School"]) {
+    config.headers["X-User-School"] = userSchool;
+  }
+
   const correlationId = config.headers["X-Correlation-Id"] || config.headers["X-Correlation-ID"] || generateCorrelationId();
   config.headers["X-Correlation-Id"] = correlationId;
   config.metadata = { startTime: Date.now(), correlationId };

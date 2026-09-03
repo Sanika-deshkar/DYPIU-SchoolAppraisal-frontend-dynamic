@@ -5,6 +5,7 @@ import { createUser, deleteUser, fetchUsers, updateUser } from "../../../api/use
 import { getAttachmentUrl } from "../../../utils/attachment";
 import { formatDateDDMMYYYY } from "../../../utils/dateFormat";
 import { LoadingState } from "../components/LoadingState";
+import { getUniversitySchools } from "../formStudio/formStudioApi";
 import {
   ADMINISTRATIVE_POSTS,
   SCHOOL_OPTIONS,
@@ -204,29 +205,26 @@ function validateEdit(form) {
 }
 
 const editFormFromUser = (user = {}) => {
-  const category = user.category === "administrative" ? "administrative" : "academic";
-  const postValue = ADMINISTRATIVE_POSTS.find((post) =>
-    post.value === user.post || post.label === user.post || post.label === user.assignment || post.value === user.designation
-  )?.value || "";
-  const administrativePosts = [
-    user.administrativePosts,
-    user.assignedPosts,
-    user.posts,
-    user.accountType === "auditor" && category === "administrative" ? postValue : [],
-  ].map(normalizePostList).find((posts) => posts.length) || [];
+  const isAuditor = user.accountType === "auditor";
+  const isAcademic = user.category === "academic";
+  const isAdministrative = user.category === "administrative";
+  const currentSchools = isAuditor && isAcademic
+    ? (user.schools?.length ? user.schools : getStoredAcademicAuditorSchools(user))
+    : [];
 
   return {
-    accountType: user.accountType === "auditor" ? "auditor" : "user",
-    category,
-    auditorType: user.accountType === "auditor" ? (user.auditorType || "internal") : "",
-    school: category === "academic" ? canonicalSchoolCode(user.school || user.schoolName || user.assignment) : "",
-    schools: category === "academic" && user.accountType === "auditor"
-      ? normalizeSchoolList(user.schools || user.assignedSchools || user.academicSchools || user.schoolCodes || user.school || user.schoolName || user.assignment)
-      : [],
-    post: category === "administrative" ? postValue : "",
-    administrativePosts: category === "administrative" && user.accountType === "auditor" ? administrativePosts : [],
-    name: user.name === "-" ? "" : user.name || "",
-    email: user.email === "-" ? "" : user.email || "",
+    accountType: user.accountType || "user",
+    category: user.category || "",
+    auditorType: user.auditorType || "",
+    auditorRole: user.auditorRole || "",
+    role: user.role || "",
+    school: !isAuditor && isAcademic ? user.school || "" : "",
+    schools: currentSchools,
+    designation: user.designation || "",
+    post: !isAuditor && isAdministrative ? user.post || "" : "",
+    administrativePosts: !isAcademic && isAuditor ? user.administrativePosts || [] : [],
+    name: user.name || "",
+    email: user.email || "",
     password: "",
     confirmPassword: "",
   };
@@ -234,8 +232,9 @@ const editFormFromUser = (user = {}) => {
 
 const canDeleteUser = (user = {}) => user.accountType === "auditor" && !user.deleted;
 
-export default function UserManagementPanel() {
+export default function UserManagementPanel({ currentUser }) {
   const [users, setUsers] = useState([]);
+  const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -254,7 +253,19 @@ export default function UserManagementPanel() {
   const [avatarPreviewUser, setAvatarPreviewUser] = useState(null);
   const [showDeleted, setShowDeleted] = useState(false);
 
-  const schools = useMemo(() => SCHOOL_OPTIONS, []);
+  const fetchUniversitySchools = async () => {
+    const uId = currentUser?.universityId || sessionStorage.getItem("universityId") || 1;
+    try {
+      const data = await getUniversitySchools(uId);
+      setSchools(data || []);
+    } catch (err) {
+      console.error("Failed to load university schools:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchUniversitySchools();
+  }, [currentUser?.universityId]);
   const filteredUsers = useMemo(() =>
     users.filter((user) =>
       (categoryFilter === "all" || user.category === categoryFilter) &&
@@ -283,7 +294,19 @@ export default function UserManagementPanel() {
 
       try {
         const { data } = await fetchUsers({ includeDeleted: showDeleted });
-        if (isActive) setUsers(normalizeList(data).map(normalizeUser));
+        const list = normalizeList(data).map(normalizeUser);
+        const filteredByTenant = (currentUser?.universityId || currentUser?.universityCode)
+          ? list.filter((u) => {
+              if (currentUser.universityId && u.universityId) {
+                return String(u.universityId) === String(currentUser.universityId);
+              }
+              if (currentUser.universityCode && u.universityCode) {
+                return u.universityCode.toLowerCase() === currentUser.universityCode.toLowerCase();
+              }
+              return true;
+            })
+          : list;
+        if (isActive) setUsers(filteredByTenant);
       } catch (error) {
         if (isActive) {
           setUsers([]);
@@ -343,6 +366,7 @@ export default function UserManagementPanel() {
     setErrors({});
     setStatus("");
     setShowForm(true);
+    fetchUniversitySchools();
   };
 
   const closeForm = () => {
@@ -384,6 +408,8 @@ export default function UserManagementPanel() {
       name: form.name.trim(),
       email: form.email.trim().toLowerCase(),
       password: form.password,
+      universityId: currentUser?.universityId || undefined,
+      universityCode: currentUser?.universityCode || undefined,
     };
 
     setCreating(true);
@@ -620,13 +646,14 @@ export default function UserManagementPanel() {
                     <AcademicSchoolMultiSelect
                       selected={form.schools}
                       onToggle={toggleAcademicSchool}
+                      schools={schools}
                     />
                   ) : (
                     <select className="audit-control" style={styles.control} value={form.school} onChange={(event) => updateField("school", event.target.value)}>
-                      <option value="">Select school</option>
+                      <option value="">{schools.length === 0 ? "-- No schools configured (Add in Form Studio) --" : "Select school"}</option>
                       {schools.map((school) => (
-                        <option key={school.name} value={school.code.toUpperCase()}>
-                          {school.name}{school.code ? ` (${school.code})` : ""}
+                        <option key={school.code} value={school.code.toUpperCase()}>
+                          {school.name} ({school.code})
                         </option>
                       ))}
                     </select>
@@ -921,13 +948,14 @@ export default function UserManagementPanel() {
                     <AcademicSchoolMultiSelect
                       selected={editForm.schools}
                       onToggle={toggleEditAcademicSchool}
+                      schools={schools}
                     />
                   ) : (
                     <select className="audit-control" style={styles.control} value={editForm.school} onChange={(event) => updateEditField("school", event.target.value)}>
-                      <option value="">Select school</option>
+                      <option value="">{schools.length === 0 ? "-- No schools configured (Add in Form Studio) --" : "Select school"}</option>
                       {schools.map((school) => (
-                        <option key={school.name} value={school.code.toUpperCase()}>
-                          {school.name}{school.code ? ` (${school.code})` : ""}
+                        <option key={school.code} value={school.code.toUpperCase()}>
+                          {school.name} ({school.code})
                         </option>
                       ))}
                     </select>
@@ -1124,14 +1152,15 @@ function ReportStat({ label, value }) {
   );
 }
 
-const schoolLabelFor = (value) => {
-  const school = SCHOOL_OPTIONS.find((option) => option.code.toUpperCase() === value);
-  return school ? `${school.name} (${school.code})` : value;
+const schoolLabelFor = (value, availableSchools = []) => {
+  if (!value) return "";
+  const school = (availableSchools || []).find((option) => option.code?.toUpperCase() === String(value).toUpperCase());
+  return school ? `${school.name} (${school.code})` : String(value);
 };
 
 function assignmentTextFor(user = {}) {
   if (user.accountType === "auditor" && user.category === "academic" && user.schools?.length) {
-    return user.schools.map(schoolLabelFor).join(", ");
+    return user.schools.join(", ");
   }
   return user.assignment;
 }
@@ -1141,7 +1170,7 @@ function assignmentCellFor(user = {}) {
     return (
       <div style={styles.assignmentBadgeList}>
         {user.schools.map((school) => (
-          <span key={school} style={styles.assignmentBadge} title={schoolLabelFor(school)}>{school}</span>
+          <span key={school} style={styles.assignmentBadge} title={school}>{school}</span>
         ))}
       </div>
     );
@@ -1149,13 +1178,13 @@ function assignmentCellFor(user = {}) {
 
   if (user.accountType === "auditor" && user.category === "academic" && user.schools?.length === 1) {
     const [school] = user.schools;
-    return <span title={schoolLabelFor(school)}>{school}</span>;
+    return <span title={school}>{school}</span>;
   }
 
   return assignmentTextFor(user);
 }
 
-function AcademicSchoolMultiSelect({ selected, onToggle }) {
+function AcademicSchoolMultiSelect({ selected, onToggle, schools = [] }) {
   const summary = selected.length
     ? `${selected.length} school${selected.length === 1 ? "" : "s"} selected`
     : "Select schools";
@@ -1167,24 +1196,30 @@ function AcademicSchoolMultiSelect({ selected, onToggle }) {
         <span aria-hidden="true">▾</span>
       </summary>
       <div style={styles.multiSelectMenu}>
-        {SCHOOL_OPTIONS.map((school) => {
-          const code = school.code.toUpperCase();
-          return (
-            <label key={school.code} style={styles.multiSelectOption}>
-              <input
-                type="checkbox"
-                checked={selected.includes(code)}
-                onChange={() => onToggle(code)}
-                style={styles.multiSelectCheckbox}
-              />
-              <span>{school.name}{school.code ? ` (${school.code})` : ""}</span>
-            </label>
-          );
-        })}
+        {schools.length === 0 ? (
+          <div style={{ padding: "10px 14px", color: "#64748b", fontSize: "13px" }}>
+            ⚠️ No schools configured yet. Add schools in <strong>Appraisal Form Studio</strong>.
+          </div>
+        ) : (
+          schools.map((school) => {
+            const code = school.code.toUpperCase();
+            return (
+              <label key={school.code} style={styles.multiSelectOption}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(code)}
+                  onChange={() => onToggle(code)}
+                  style={styles.multiSelectCheckbox}
+                />
+                <span>{school.name}{school.code ? ` (${school.code})` : ""}</span>
+              </label>
+            );
+          })
+        )}
       </div>
       {!!selected.length && (
         <div style={styles.selectedPostList}>
-          {selected.map((school) => <span key={school}>{schoolLabelFor(school)}</span>)}
+          {selected.map((school) => <span key={school}>{school}</span>)}
         </div>
       )}
     </details>

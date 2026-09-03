@@ -180,6 +180,15 @@ apiClient.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
+  const uId = sessionStorage.getItem("universityId") || localStorage.getItem("universityId");
+  if (uId && !config.headers["X-University-Id"]) {
+    config.headers["X-University-Id"] = uId;
+  }
+  const uCode = sessionStorage.getItem("universityCode") || localStorage.getItem("universityCode");
+  if (uCode && !config.headers["X-University-Code"]) {
+    config.headers["X-University-Code"] = uCode;
+  }
+
   const correlationId = config.headers["X-Correlation-Id"] || config.headers["X-Correlation-ID"] || generateCorrelationId();
   config.headers["X-Correlation-Id"] = correlationId;
   config.metadata = { startTime: Date.now(), correlationId };

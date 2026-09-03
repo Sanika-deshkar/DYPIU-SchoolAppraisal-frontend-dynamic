@@ -215,6 +215,9 @@ export const normalizeUserProfile = (payload = {}) => {
     category,
     auditorType,
     auditorRole,
+    universityId: user.universityId || payload.universityId || user.university_id || payload.university_id || "",
+    universityCode: user.universityCode || payload.universityCode || user.university_code || payload.university_code || "",
+    universityName: user.universityName || payload.universityName || user.university_name || payload.university_name || "",
     academicYear: user.academicYear || user.currentAcademicYear || payload.academicYear || payload.currentAcademicYear || "",
     role: accountType === "auditor" ? auditorRole : rawRole,
   };

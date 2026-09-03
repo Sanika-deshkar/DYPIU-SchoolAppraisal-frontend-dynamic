@@ -1,14 +1,4 @@
-export const SCHOOL_OPTIONS = [
-  { name: "School of Computer Science & Applications", code: "SoCSEA", group: "engineering" },
-  { name: "School of Bio-Engineering & Bio Science", code: "SoBB", group: "engineering" },
-  { name: "School of Continual Education", code: "SoCE", group: "engineering" },
-  { name: "School of Engineering, Management & Research", code: "SoEMR", group: "engineering" },
-  { name: "School of Commerce & Management", code: "SoCM", group: "nonEngineering" },
-  { name: "School of Media & Communication Studies", code: "SoMCS", group: "nonEngineering" },
-  { name: "School of Design", code: "SoD", group: "nonEngineering" },
-  { name: "School of Applied Arts", code: "SoAA", group: "nonEngineering" },
-  { name: "School of Humanities & Social Sciences", code: "SoHSS", group: "nonEngineering" },
-];
+export const SCHOOL_OPTIONS = [];
 
 const normalizeSchoolValue = (value = "") =>
   String(value).trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -32,13 +22,15 @@ const rawListValue = (value) => {
 };
 
 export const canonicalSchoolCode = (value = "") => {
-  const normalized = normalizeSchoolValue(value);
+  if (!value) return "";
+  const str = String(value).trim();
+  const normalized = normalizeSchoolValue(str);
   const school = SCHOOL_OPTIONS.find((option) =>
     normalizeSchoolValue(option.code) === normalized ||
     normalizeSchoolValue(option.name) === normalized
   );
 
-  return school?.code.toUpperCase() || "";
+  return school?.code?.toUpperCase() || str.toUpperCase();
 };
 
 export const normalizeAcademicSchoolCodes = (value) =>

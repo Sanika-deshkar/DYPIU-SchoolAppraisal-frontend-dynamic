@@ -687,15 +687,7 @@ const canForwardSubmissionToAuditor = (submission = {}) => {
 };
 const schoolAliasesFor = (value = "") => {
   const normalized = normalizeAuditAssignment(value);
-  const option = SCHOOL_OPTIONS.find((school) =>
-    normalizeAuditAssignment(school.name) === normalized ||
-    normalizeAuditAssignment(school.code) === normalized
-  );
-  return uniqueValues([
-    normalized,
-    option ? normalizeAuditAssignment(option.name) : "",
-    option ? normalizeAuditAssignment(option.code) : "",
-  ]);
+  return uniqueValues([normalized]);
 };
 const postAliasesFor = (value = "") => {
   const normalized = normalizeAuditAssignment(value);
@@ -807,9 +799,7 @@ const academicSchoolValueFor = (value) => {
   return value;
 };
 const schoolLabelFor = (value = "") => {
-  const code = canonicalSchoolCode(value) || String(value || "").trim().toUpperCase();
-  const school = SCHOOL_OPTIONS.find((option) => option.code.toUpperCase() === code);
-  return school ? `${school.name} (${school.code})` : code;
+  return canonicalSchoolCode(value) || String(value || "").trim().toUpperCase();
 };
 const academicSchoolsFor = (user = {}) => {
   const storedSchools = getStoredAcademicAuditorSchools(user);
@@ -1494,6 +1484,9 @@ export default function ReviewDashboard({ dashboardKind = "review" }) {
   const roleConfig = isAuditor ? REVIEW_ROLE_CONFIG.auditor : REVIEW_ROLE_CONFIG[role] || REVIEW_ROLE_CONFIG.iqac;
   const sessionProfile = useMemo(() => ({
     id: sessionStorage.getItem("userId") || "",
+    universityId: sessionStorage.getItem("universityId") || "",
+    universityCode: sessionStorage.getItem("universityCode") || "",
+    universityName: sessionStorage.getItem("universityName") || "",
     name: sessionStorage.getItem("name") || roleConfig.roleTitle,
     designation: sessionStorage.getItem("designation") || roleConfig.roleTitle,
     school: sessionStorage.getItem("school") || (isAuditor ? "" : "D Y Patil International University"),
@@ -2544,7 +2537,7 @@ export default function ReviewDashboard({ dashboardKind = "review" }) {
           ) : visibleActiveView === "advanced-overview" ? (
             <AdvancedOverviewPanel metrics={metrics} submissions={allSubmissions} loading={loadingSubmissions} />
           ) : visibleActiveView === "user-management" && canManageUsers ? (
-            <UserManagementPanel />
+            <UserManagementPanel currentUser={profile} />
           ) : visibleActiveView === "auditor-final-review" ? (
             <AuditorFinalReviewPanel
               submissions={auditorReviewedSubmissions}
@@ -2568,7 +2561,7 @@ export default function ReviewDashboard({ dashboardKind = "review" }) {
               resolveSubmitterAvatar={resolveSubmitterAvatar}
             />
           ) : visibleActiveView === "form-studio" ? (
-            <AppraisalFormStudio currentUser={currentUser} />
+            <AppraisalFormStudio currentUser={profile} />
           ) : visibleActiveView === "backup-restore" ? (
             <BackupRestorePanel />
           ) : null}
@@ -2757,12 +2750,6 @@ function OverviewPanel({ metrics, submissions, loading, onOpen }) {
 
 function buildSchoolProgress(submissions) {
   const schoolMap = {};
-  
-  // Pre-initialize all 8 official university schools
-  SCHOOL_OPTIONS.forEach((opt) => {
-    const code = opt.code.toUpperCase();
-    schoolMap[code] = { school: code, total: 0, approved: 0, pending: 0 };
-  });
 
   (submissions || []).forEach((submission) => {
     const rawSchool = submission.school;

@@ -16,9 +16,7 @@ import { SCHOOL_OPTIONS, canonicalSchoolCode } from "../userManagement/userManag
 const DEFAULT_SCHOOL_ADDRESS = "Dr. D. Y. Patil International University, Sector 29, Pradhikaran, Akurdi, Pune - Maharashtra, INDIA 411044";
 
 const schoolFullNameFromCode = (code = "") => {
-  const canonical = canonicalSchoolCode(code) || String(code || "").trim().toUpperCase();
-  const school = SCHOOL_OPTIONS.find((option) => option.code.toUpperCase() === canonical);
-  return school?.name || code || "";
+  return String(code || "").trim();
 };
 
 const emptyRowFor = (columns) =>

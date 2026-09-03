@@ -80,6 +80,9 @@ export default function Login() {
     setItem("auditorType", profile.auditorType);
     setItem("auditorRole", profile.auditorRole);
     setItem("role", profile.role);
+    setItem("universityId", profile.universityId || authPayload.universityId || authPayload.user?.universityId || "");
+    setItem("universityCode", profile.universityCode || authPayload.universityCode || authPayload.user?.universityCode || "");
+    setItem("universityName", profile.universityName || authPayload.universityName || authPayload.user?.universityName || "");
     try {
       const { data } = await fetchCurrentAuditCycle();
       const activeYear = data?.activeYear || data?.academicYear;

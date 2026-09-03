@@ -115,11 +115,10 @@ const attachmentsIn = (value, attachments = []) => {
   return attachments;
 };
 
-const newSchoolEntry = (code) => {
-  const school = SCHOOL_OPTIONS.find((option) => option.code.toUpperCase() === code);
+const newSchoolEntry = (code, name = "") => {
   return {
-    schoolCode: code,
-    schoolName: school?.name || code,
+    schoolCode: String(code || "").toUpperCase(),
+    schoolName: name || code,
     placementPrograms: [emptyRow(PLACEMENT_COLUMNS, 0)],
     activities: [emptyRow(ACTIVITY_COLUMNS, 0, { Activity: "Internship" })],
     careerGuidanceActivities: [emptyRow(SESSION_ACTIVITY_COLUMNS, 0)],

@@ -4,6 +4,7 @@ import {
   getSchemaDetails,
   createSchema,
   deleteSchema,
+  clearAllSchemas,
   createDraftVersion,
   deleteVersion,
   rollbackVersion,
@@ -96,6 +97,20 @@ export const SchemaManager = ({
     }
   };
 
+  const handleClearAllSchemas = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL form schemas and start completely fresh?')) {
+      return;
+    }
+    try {
+      await clearAllSchemas(selectedUniversity?.id || 1);
+      setSelectedSchema(null);
+      setVersions([]);
+      await loadSchemas();
+    } catch (err) {
+      alert('Failed to clear schemas: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
   const handleDeleteVersion = async (version) => {
     if (!window.confirm(`Are you sure you want to delete Version V${version.versionNumber} (${version.status})?`)) {
       return;
@@ -135,14 +150,26 @@ export const SchemaManager = ({
             <strong className="text-primary">{selectedUniversity?.name || 'Your University'}</strong>.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary px-3 py-2 fw-semibold shadow-sm"
-          style={{ borderRadius: '8px', background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', padding: '8px 16px', fontWeight: 600 }}
-          onClick={() => setShowCreateModal(true)}
-        >
-          + Create New Form Schema
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {schemas.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-outline-danger px-3 py-2 fw-semibold"
+              style={{ borderRadius: '8px', border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', cursor: 'pointer', padding: '8px 16px', fontWeight: 600 }}
+              onClick={handleClearAllSchemas}
+            >
+              🗑️ Clear All Schemas
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-primary px-3 py-2 fw-semibold shadow-sm"
+            style={{ borderRadius: '8px', background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', padding: '8px 16px', fontWeight: 600 }}
+            onClick={() => setShowCreateModal(true)}
+          >
+            + Create New Form Schema
+          </button>
+        </div>
       </div>
 
       {loading ? (

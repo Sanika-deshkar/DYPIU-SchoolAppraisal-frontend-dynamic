@@ -4,12 +4,12 @@ export const getSchemas = async (universityId, universityCode) => {
   const params = {};
   if (universityId) params.universityId = universityId;
   if (universityCode) params.universityCode = universityCode;
-  const res = await apiClient.get('/api/config/schemas', { params });
+  const res = await apiClient.get('/api/admin/config/schemas', { params });
   return res.data;
 };
 
 export const getSchemaDetails = async (schemaId) => {
-  const res = await apiClient.get(`/api/config/schemas/${schemaId}`);
+  const res = await apiClient.get(`/api/admin/config/schemas/${schemaId}`);
   return res.data;
 };
 
@@ -20,6 +20,11 @@ export const createSchema = async (payload) => {
 
 export const deleteSchema = async (schemaId) => {
   const res = await apiClient.delete(`/api/admin/config/schemas/${schemaId}`);
+  return res.data;
+};
+
+export const clearAllSchemas = async (universityId) => {
+  const res = await apiClient.delete(`/api/admin/config/universities/${universityId}/schemas`);
   return res.data;
 };
 
@@ -41,7 +46,7 @@ export const rollbackVersion = async (schemaId, targetVersionId) => {
 };
 
 export const getVersionTree = async (versionId) => {
-  const res = await apiClient.get(`/api/config/versions/${versionId}/tree`);
+  const res = await apiClient.get(`/api/admin/config/versions/${versionId}/tree`);
   return res.data;
 };
 
@@ -96,3 +101,29 @@ export const deleteField = async (fieldId) => {
   const res = await apiClient.delete(`/api/admin/config/fields/${fieldId}`);
   return res.data;
 };
+
+// University Schools / Departments Management
+export const getUniversitySchools = async (universityId, all = false) => {
+  if (!universityId) return [];
+  const res = await apiClient.get(`/api/admin/config/universities/${universityId}/schools`, {
+    params: all ? { all: true } : undefined,
+  });
+  return res.data || [];
+};
+
+export const createUniversitySchool = async (universityId, payload) => {
+  const res = await apiClient.post(`/api/admin/config/universities/${universityId}/schools`, payload);
+  return res.data;
+};
+
+export const updateUniversitySchool = async (universityId, schoolId, payload) => {
+  const res = await apiClient.put(`/api/admin/config/universities/${universityId}/schools/${schoolId}`, payload);
+  return res.data;
+};
+
+export const deleteUniversitySchool = async (universityId, schoolId) => {
+  const res = await apiClient.delete(`/api/admin/config/universities/${universityId}/schools/${schoolId}`);
+  return res.data;
+};
+
+

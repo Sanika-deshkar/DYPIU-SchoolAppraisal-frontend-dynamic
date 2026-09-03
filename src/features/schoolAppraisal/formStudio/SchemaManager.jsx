@@ -93,11 +93,18 @@ export const SchemaManager = ({
 
   const handleCreateDraft = async (schemaId) => {
     try {
+      const existingDraft = versions.find((v) => String(v.status || '').toUpperCase() === 'DRAFT');
+      if (existingDraft?.id) {
+        onOpenBuilder(existingDraft.id);
+        return;
+      }
       const draft = await createDraftVersion(schemaId, 'iqac-admin');
       await handleSelectSchema(selectedSchema);
-      onOpenBuilder(draft.id);
+      if (draft?.id) {
+        onOpenBuilder(draft.id);
+      }
     } catch (err) {
-      alert('Error creating draft: ' + err.message);
+      alert('Error creating/opening draft: ' + (err.response?.data?.message || err.message));
     }
   };
 

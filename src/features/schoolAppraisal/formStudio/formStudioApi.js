@@ -1,0 +1,98 @@
+import apiClient from '../../../api/client';
+
+export const getSchemas = async (universityId, universityCode) => {
+  const params = {};
+  if (universityId) params.universityId = universityId;
+  if (universityCode) params.universityCode = universityCode;
+  const res = await apiClient.get('/api/config/schemas', { params });
+  return res.data;
+};
+
+export const getSchemaDetails = async (schemaId) => {
+  const res = await apiClient.get(`/api/config/schemas/${schemaId}`);
+  return res.data;
+};
+
+export const createSchema = async (payload) => {
+  const res = await apiClient.post('/api/admin/config/schemas', payload);
+  return res.data;
+};
+
+export const deleteSchema = async (schemaId) => {
+  const res = await apiClient.delete(`/api/admin/config/schemas/${schemaId}`);
+  return res.data;
+};
+
+export const createDraftVersion = async (schemaId, createdBy = 'iqac-admin') => {
+  const res = await apiClient.post(`/api/admin/config/schemas/${schemaId}/versions/draft`, null, {
+    params: { createdBy },
+  });
+  return res.data;
+};
+
+export const deleteVersion = async (versionId) => {
+  const res = await apiClient.delete(`/api/admin/config/versions/${versionId}`);
+  return res.data;
+};
+
+export const rollbackVersion = async (schemaId, targetVersionId) => {
+  const res = await apiClient.post(`/api/admin/config/schemas/${schemaId}/rollback/${targetVersionId}`);
+  return res.data;
+};
+
+export const getVersionTree = async (versionId) => {
+  const res = await apiClient.get(`/api/config/versions/${versionId}/tree`);
+  return res.data;
+};
+
+export const publishVersion = async (versionId, publishedBy = 'iqac-admin') => {
+  const res = await apiClient.post(`/api/admin/config/versions/${versionId}/publish`, null, {
+    params: { publishedBy },
+  });
+  return res.data;
+};
+
+export const createSection = async (versionId, payload) => {
+  const res = await apiClient.post(`/api/admin/config/versions/${versionId}/sections`, payload);
+  return res.data;
+};
+
+export const updateSection = async (sectionId, payload) => {
+  const res = await apiClient.put(`/api/admin/config/sections/${sectionId}`, payload);
+  return res.data;
+};
+
+export const deleteSection = async (sectionId) => {
+  const res = await apiClient.delete(`/api/admin/config/sections/${sectionId}`);
+  return res.data;
+};
+
+export const createTable = async (sectionId, payload) => {
+  const res = await apiClient.post(`/api/admin/config/sections/${sectionId}/tables`, payload);
+  return res.data;
+};
+
+export const updateTable = async (tableId, payload) => {
+  const res = await apiClient.put(`/api/admin/config/tables/${tableId}`, payload);
+  return res.data;
+};
+
+export const deleteTable = async (tableId) => {
+  const res = await apiClient.delete(`/api/admin/config/tables/${tableId}`);
+  return res.data;
+};
+
+export const createField = async (sectionId, payload) => {
+  const res = await apiClient.post(`/api/admin/config/sections/${sectionId}/fields`, payload);
+  return res.data;
+};
+
+export const updateField = async (fieldId, payload) => {
+  const res = await apiClient.put(`/api/admin/config/fields/${fieldId}`, payload);
+  return res.data;
+};
+
+export const deleteField = async (fieldId) => {
+  const res = await apiClient.delete(`/api/admin/config/fields/${fieldId}`);
+  return res.data;
+};

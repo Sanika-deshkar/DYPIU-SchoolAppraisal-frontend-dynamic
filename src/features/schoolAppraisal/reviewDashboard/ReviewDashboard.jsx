@@ -42,6 +42,7 @@ import {
   normalizeAcademicSchoolCodes,
 } from "../userManagement/userManagementConfig";
 import BackupRestorePanel from "./BackupRestorePanel";
+import AppraisalFormStudio from "../formStudio/AppraisalFormStudio";
 import { formatDateDDMMYYYY } from "../../../utils/dateFormat";
 import { getAttachmentUrl } from "../../../utils/attachment";
 import { scrollPageToTop } from "../../../utils/scrollToTop";
@@ -77,6 +78,13 @@ const START_NEXT_YEAR_NAV_ITEM = {
   group: "audit-cycle",
   groupLabel: "Audit Cycle",
 };
+const APPRAISAL_FORM_STUDIO_NAV_ITEM = {
+  id: "form-studio",
+  title: "Appraisal Form Studio",
+  caption: "Design & publish audit schemas",
+  group: "form-studio-group",
+  groupLabel: "Form Management",
+};
 const BACKUP_RESTORE_NAV_ITEM = {
   id: "backup-restore",
   title: "Backup & Restore",
@@ -89,6 +97,7 @@ const REVIEW_ROUTE_VIEW_IDS = new Set([
   AUDITOR_FINAL_REVIEW_NAV_ITEM.id,
   PREVIOUS_REPORTS_NAV_ITEM.id,
   USER_MANAGEMENT_NAV_ITEM.id,
+  APPRAISAL_FORM_STUDIO_NAV_ITEM.id,
   BACKUP_RESTORE_NAV_ITEM.id,
 ]);
 
@@ -1566,6 +1575,7 @@ export default function ReviewDashboard({ dashboardKind = "review" }) {
       items.push(AUDITOR_FINAL_REVIEW_NAV_ITEM, PREVIOUS_REPORTS_NAV_ITEM, START_NEXT_YEAR_NAV_ITEM);
     }
     if (role === "iqac") {
+      items.push(APPRAISAL_FORM_STUDIO_NAV_ITEM);
       items.push(BACKUP_RESTORE_NAV_ITEM);
     }
     return items;
@@ -2557,6 +2567,8 @@ export default function ReviewDashboard({ dashboardKind = "review" }) {
               downloadingAttachmentsId={downloadingAttachmentsId}
               resolveSubmitterAvatar={resolveSubmitterAvatar}
             />
+          ) : visibleActiveView === "form-studio" ? (
+            <AppraisalFormStudio currentUser={currentUser} />
           ) : visibleActiveView === "backup-restore" ? (
             <BackupRestorePanel />
           ) : null}

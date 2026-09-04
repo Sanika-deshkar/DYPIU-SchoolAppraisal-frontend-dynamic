@@ -10,7 +10,6 @@ import SubmissionConfirmation from "./SubmissionConfirmation";
 import { emptySubmissionConfirmation, isSubmissionConfirmed } from "./submissionConfirmationState";
 import { columnsWithSerial, serialColumnFor } from "./tableHelpers";
 import { scrollPageToTop } from "../../../utils/scrollToTop";
-import { academicAudit2025Schema } from "../formSchemas";
 import { SCHOOL_OPTIONS, canonicalSchoolCode } from "../userManagement/userManagementConfig";
 
 const DEFAULT_SCHOOL_ADDRESS = "Dr. D. Y. Patil International University, Sector 29, Pradhikaran, Akurdi, Pune - Maharashtra, INDIA 411044";
@@ -235,9 +234,8 @@ const buildAcademicPartEReview = (draft = {}, history = []) => {
   };
 };
 
-const academicPartESection = academicAudit2025Schema.sections.find((section) => section.id === "part-e-observations");
-
 function buildInitialValues(schema) {
+  if (!schema?.sections) return {};
   return schema.sections.reduce((values, section) => {
     const fields = [
       ...(section.fields || []),
@@ -499,10 +497,7 @@ export default function AuditForm({
       ? academicPartEReview?.externalValues
       : academicPartEReview?.internalValues;
     const reportValues = academicPartEReview ? { ...values, ...reportPartEValues } : values;
-    const reportSchema =
-      academicPartEReview && academicPartESection && !schema.sections.some((section) => section.id === academicPartESection.id)
-        ? { ...schema, sections: [...schema.sections, academicPartESection] }
-        : schema;
+    const reportSchema = schema;
 
     return (
       <div className="academic-report-view" style={styles.form}>

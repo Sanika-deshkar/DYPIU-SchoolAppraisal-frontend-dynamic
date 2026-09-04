@@ -18,6 +18,7 @@ import UserProfileModal from "../components/UserProfileModal";
 import { administrativeAuditMeta, administrativeAuditModules } from "./administrativeAuditConfig";
 import { getAttachmentUrl } from "../../../utils/attachment";
 import { scrollPageToTop } from "../../../utils/scrollToTop";
+import { fetchActiveSchema, fetchUniversityBranding } from "../../../api/config";
 
 const administrativeUserModules = [
   ...administrativeAuditModules.filter((module) => module.id !== "section-f-observations-recommendations"),
@@ -261,6 +262,48 @@ export default function AdministrativeAuditDashboard() {
 
   const [profileOverrides, setProfileOverrides] = useState({});
   const [accountAvatarUrl, setAccountAvatarUrl] = useState("");
+  const [dynamicSchema, setDynamicSchema] = useState(null);
+  const [schemaLoading, setSchemaLoading] = useState(true);
+  const [universityInfo, setUniversityInfo] = useState(null);
+
+  useEffect(() => {
+    let isActive = true;
+    const universityCode = sessionStorage.getItem("universityCode") || localStorage.getItem("universityCode") || "dypiu";
+    fetchUniversityBranding(universityCode)
+      .then((data) => {
+        if (isActive && data) setUniversityInfo(data);
+      })
+      .catch(() => {});
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadDynamicAdminSchema = async () => {
+      setSchemaLoading(true);
+      try {
+        const universityCode = sessionStorage.getItem("universityCode") || localStorage.getItem("universityCode") || "dypiu";
+        const userPost = sessionStorage.getItem("post") || sessionStorage.getItem("designation") || "";
+        const schema = await fetchActiveSchema("administrative", universityCode, userPost);
+        if (!isActive) return;
+        if (schema && Array.isArray(schema.sections) && schema.sections.length > 0) {
+          setDynamicSchema(schema);
+        } else {
+          setDynamicSchema(null);
+        }
+      } catch (err) {
+        if (isActive) setDynamicSchema(null);
+      } finally {
+        if (isActive) setSchemaLoading(false);
+      }
+    };
+    loadDynamicAdminSchema();
+    return () => {
+      isActive = false;
+    };
+  }, [academicYear]);
 
   // sessionStorage never carries the avatar, and profileOverrides only lives for the rest of
   // this session after a save in UserProfileModal — without this fetch, the sidebar avatar
@@ -722,23 +765,66 @@ export default function AdministrativeAuditDashboard() {
           }}
           onLogout={() => setShowLogoutModal(true)}
           onOpenProfile={() => setShowProfileModal(true)}
+          hasSchema={Boolean(dynamicSchema?.sections?.length)}
         />
 
         <main className="admin-audit-main" style={styles.main}>
+          {schemaLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+              <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }}></div>
+              <p style={{ marginTop: '16px', color: '#64748b', fontWeight: 600 }}>Loading Administrative Appraisal Form...</p>
+            </div>
+          ) : !dynamicSchema || !dynamicSchema.sections || dynamicSchema.sections.length === 0 ? (
+            <div style={{ padding: "40px 24px", maxWidth: "820px", margin: "40px auto" }}>
+              <div style={{
+                background: "#fff",
+                border: "1px solid #e2e8f0",
+                borderRadius: "16px",
+                padding: "48px 36px",
+                textAlign: "center",
+                boxShadow: "0 4px 24px rgba(0,0,0,0.06)"
+              }}>
+                <div style={{ fontSize: "56px", marginBottom: "16px" }}>📋</div>
+                <h2 style={{ fontSize: "22px", fontWeight: "800", color: "#0f172a", marginBottom: "8px" }}>
+                  No Active Administrative Appraisal Form Published
+                </h2>
+                <p style={{ color: "#64748b", fontSize: "15px", lineHeight: "1.6", maxWidth: "580px", margin: "0 auto 24px" }}>
+                  IQAC has not yet published an administrative appraisal form for <strong>{profile.designation || profile.post || "your administrative post"}</strong> for Academic Year <strong>{academicYear}</strong>.
+                </p>
+                <div style={{
+                  background: "#f0fdf4",
+                  border: "1px solid #bbf7d0",
+                  borderRadius: "10px",
+                  padding: "16px 20px",
+                  textAlign: "left",
+                  color: "#166534",
+                  fontSize: "14px",
+                  display: "inline-block"
+                }}>
+                  <strong>💡 What happens next?</strong>
+                  <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
+                    <li>IQAC creates and designs the administrative appraisal modules and tables in <strong>Appraisal Form Studio</strong>.</li>
+                    <li>Once IQAC clicks <strong>🚀 Publish Version</strong>, your form will instantly become available here for data entry and submission.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
           <header className="admin-audit-header audit-form__header" style={styles.header}>
             <div style={styles.headerContent}>
-              <img src={universityLogo} alt="DYPIU Logo" style={styles.logo} />
+              <img src={universityInfo?.logoUrl || universityLogo} alt="University Logo" style={styles.logo} />
               <div>
-                <p style={styles.kicker}>{administrativeAuditMeta.university}</p>
-                <h1 style={styles.title}>{administrativeAuditMeta.title}</h1>
-                <p style={styles.meta}>{administrativeAuditMeta.address}</p>
-                <p style={styles.meta}>{administrativeAuditMeta.act}</p>
+                <p style={styles.kicker}>{universityInfo?.universityName || administrativeAuditMeta.university}</p>
+                <h1 style={styles.title}>{dynamicSchema?.title || administrativeAuditMeta.title}</h1>
+                <p style={styles.meta}>{universityInfo?.address || administrativeAuditMeta.address}</p>
+                <p style={styles.meta}>{universityInfo?.act || administrativeAuditMeta.act}</p>
                 <p style={styles.year}>Academic Year {academicYear}</p>
                 <p style={styles.cycleLabel}>{cycleLabelFor(workflow)}</p>
               </div>
             </div>
             <div style={styles.headerRight}>
-              <img src={iqacLogo} alt="IQAC Logo" style={styles.headerIqacLogo} />
+              <img src={universityInfo?.iqacLogoUrl || iqacLogo} alt="IQAC Logo" style={styles.headerIqacLogo} />
               <div className="admin-audit-actions" style={styles.headerActions}>
                 <button type="button" className="btn btn-secondary" onClick={resetActiveModule} disabled={readOnly || loadingDraft || savingDraft}>
                   Reset Section
@@ -914,6 +1000,8 @@ export default function AdministrativeAuditDashboard() {
             </div>
             {(isLastModule || isFinalOwnedModule) && submitStatus && <div style={styles.submitStatus}>{submitStatus}</div>}
           </section>}
+          </>
+          )}
         </main>
 
         {showLogoutModal && <LogoutModal onCancel={() => setShowLogoutModal(false)} onConfirm={handleLogout} />}
@@ -1079,7 +1167,7 @@ function AttachmentField({
   );
 }
 
-function Sidebar({ activeModuleId, setActiveModuleId, profile, academicYear, currentAcademicYear, availableYears, onYearChange, onLogout, onOpenProfile }) {
+function Sidebar({ activeModuleId, setActiveModuleId, profile, academicYear, currentAcademicYear, availableYears, onYearChange, onLogout, onOpenProfile, hasSchema }) {
   return (
     <AppSidebar
       title="Administrative Audit"
@@ -1091,7 +1179,7 @@ function Sidebar({ activeModuleId, setActiveModuleId, profile, academicYear, cur
       availableYears={availableYears}
       onYearChange={onYearChange}
       roleText="Registrar · HR · DSW · Placement"
-      items={administrativeUserModules}
+      items={hasSchema ? administrativeUserModules : []}
       activeId={activeModuleId}
       onChange={setActiveModuleId}
       profile={profile}

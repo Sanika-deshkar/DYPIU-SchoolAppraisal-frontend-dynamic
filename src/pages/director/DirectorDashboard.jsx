@@ -3,13 +3,12 @@ import { useNavigate } from "react-router-dom";
 import AuditForm from "../../features/schoolAppraisal/components/AuditForm";
 import AppSidebar from "../../features/schoolAppraisal/components/AppSidebar";
 import UserProfileModal from "../../features/schoolAppraisal/components/UserProfileModal";
-import { academicAudit2025Schema } from "../../features/schoolAppraisal/formSchemas";
 import { scrollPageToTop } from "../../utils/scrollToTop";
 import { fetchCurrentAuditCycle } from "../../api/submissions";
 import { fetchCurrentUser } from "../../api/users";
 import { clearAuthState } from "../../api/client";
+import { fetchActiveSchema, fetchUniversityBranding } from "../../api/config";
 
-const directorAuditSchema = academicAudit2025Schema;
 const compactYear = (str = "") => {
   const match = String(str).match(/(\d{4})\D+(\d{2,4})/);
   if (!match) return "2025-26";
@@ -29,12 +28,27 @@ export default function DirectorDashboard() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [profileOverrides, setProfileOverrides] = useState({});
   const [accountAvatarUrl, setAccountAvatarUrl] = useState("");
-  const [activeSectionId, setActiveSectionId] = useState(directorAuditSchema.sections[0].id);
+  const [schema, setSchema] = useState(null);
+  const [schemaLoading, setSchemaLoading] = useState(true);
+  const [activeSectionId, setActiveSectionId] = useState("");
   const [reportMode, setReportMode] = useState(false);
+  const [universityInfo, setUniversityInfo] = useState(null);
 
-  // sessionStorage never carries the avatar, and profileOverrides only lives for the rest of
-  // this session after a save in UserProfileModal — without this fetch, the sidebar avatar
-  // reverts to initials on every reload/re-login even though the picture was saved.
+  // Fetch University Branding
+  useEffect(() => {
+    let isActive = true;
+    const universityCode = sessionStorage.getItem("universityCode") || localStorage.getItem("universityCode") || "dypiu";
+    fetchUniversityBranding(universityCode)
+      .then((data) => {
+        if (isActive && data) setUniversityInfo(data);
+      })
+      .catch(() => {});
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  // Fetch Current User
   useEffect(() => {
     let isActive = true;
     fetchCurrentUser()
@@ -48,6 +62,50 @@ export default function DirectorDashboard() {
       isActive = false;
     };
   }, []);
+
+  // Fetch Dynamic Active Schema for School & University
+  useEffect(() => {
+    let isActive = true;
+    const loadDynamicSchema = async () => {
+      setSchemaLoading(true);
+      try {
+        const universityCode = sessionStorage.getItem("universityCode") || localStorage.getItem("universityCode") || "dypiu";
+        const userSchool = sessionStorage.getItem("userSchool") || sessionStorage.getItem("school") || "";
+        const dynamicSchema = await fetchActiveSchema("academic", universityCode, userSchool);
+        if (!isActive) return;
+
+        if (dynamicSchema && Array.isArray(dynamicSchema.sections) && dynamicSchema.sections.length > 0) {
+          const normalizedSections = dynamicSchema.sections.map((sec) => ({
+            ...sec,
+            id: sec.idString || sec.id || sec.sectionKey,
+            sectionKey: sec.sectionKey || sec.idString || String(sec.id),
+          }));
+          const normalizedSchema = {
+            ...dynamicSchema,
+            sections: normalizedSections,
+          };
+          setSchema(normalizedSchema);
+          setActiveSectionId(normalizedSections[0].id);
+        } else {
+          setSchema(null);
+          setActiveSectionId("");
+        }
+      } catch (err) {
+        console.warn("No active dynamic schema available for director:", err);
+        if (isActive) {
+          setSchema(null);
+          setActiveSectionId("");
+        }
+      } finally {
+        if (isActive) setSchemaLoading(false);
+      }
+    };
+
+    loadDynamicSchema();
+    return () => {
+      isActive = false;
+    };
+  }, [academicYear]);
 
   useEffect(() => {
     let isActive = true;
@@ -100,7 +158,7 @@ export default function DirectorDashboard() {
       <div className="academic-audit-shell" style={styles.shell}>
       <AppSidebar
         title="School Appraisal"
-        subtitle="D. Y. Patil International University"
+        subtitle={universityInfo?.universityName || "University Appraisal"}
         roleTitle="Academic Audit"
         roleText="Director of Schools"
         academicYear={academicYear}
@@ -110,7 +168,7 @@ export default function DirectorDashboard() {
           sessionStorage.setItem("academicYear", newYear);
           setAcademicYear(newYear);
         }}
-        items={directorAuditSchema.sections}
+        items={schema?.sections || []}
         activeId={activeSectionId}
         onChange={(sectionId) => {
           setReportMode(false);
@@ -123,16 +181,58 @@ export default function DirectorDashboard() {
       />
 
       <main className="academic-audit-main" style={styles.page}>
-        <AuditForm
-          schema={directorAuditSchema}
-          academicYear={academicYear}
-          activeAcademicYear={activeAcademicYear}
-          isHistoricalYear={isHistoricalYear}
-          activeSectionId={activeSectionId}
-          reportMode={reportMode}
-          onReportModeChange={setReportMode}
-          onSectionChange={setActiveSectionId}
-        />
+        {schemaLoading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+            <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }}></div>
+            <p style={{ marginTop: '16px', color: '#64748b', fontWeight: 600 }}>Loading Appraisal Form...</p>
+          </div>
+        ) : !schema || !schema.sections || schema.sections.length === 0 ? (
+          <div style={{ padding: "40px 24px", maxWidth: "820px", margin: "40px auto" }}>
+            <div style={{
+              background: "#fff",
+              border: "1px solid #e2e8f0",
+              borderRadius: "16px",
+              padding: "48px 36px",
+              textAlign: "center",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.06)"
+            }}>
+              <div style={{ fontSize: "56px", marginBottom: "16px" }}>📋</div>
+              <h2 style={{ fontSize: "22px", fontWeight: "800", color: "#0f172a", marginBottom: "8px" }}>
+                No Active Appraisal Form Published
+              </h2>
+              <p style={{ color: "#64748b", fontSize: "15px", lineHeight: "1.6", maxWidth: "580px", margin: "0 auto 24px" }}>
+                IQAC has not yet published an appraisal form for <strong>{profile.school || "your school/department"}</strong> for Academic Year <strong>{academicYear}</strong>.
+              </p>
+              <div style={{
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                borderRadius: "10px",
+                padding: "16px 20px",
+                textAlign: "left",
+                color: "#166534",
+                fontSize: "14px",
+                display: "inline-block"
+              }}>
+                <strong>💡 What happens next?</strong>
+                <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
+                  <li>IQAC creates and designs the appraisal sections and tables in <strong>Appraisal Form Studio</strong>.</li>
+                  <li>Once IQAC clicks <strong>🚀 Publish Version</strong>, your form will instantly become available here for data entry and submission.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <AuditForm
+            schema={schema}
+            academicYear={academicYear}
+            activeAcademicYear={activeAcademicYear}
+            isHistoricalYear={isHistoricalYear}
+            activeSectionId={activeSectionId}
+            reportMode={reportMode}
+            onReportModeChange={setReportMode}
+            onSectionChange={setActiveSectionId}
+          />
+        )}
       </main>
 
       {showLogoutModal && <LogoutModal onCancel={() => setShowLogoutModal(false)} onConfirm={handleLogout} />}

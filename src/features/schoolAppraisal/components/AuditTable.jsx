@@ -6,16 +6,87 @@ import { getAttachmentUrl } from "../../../utils/attachment";
 import { formatDateDDMMYYYY } from "../../../utils/dateFormat";
 import DateInput from "./DateInput";
 
-const isAttachmentColumn = (column, table = {}) =>
-  !table.urlColumns?.includes(column) && /\b(link|proof|attachment|document|mom)\b/i.test(column);
-const isDateColumn = (column, table = {}) =>
-  table.dateColumns?.includes(column) || /^\s*date\s*$/i.test(column);
-const isUrlColumn = (column, table = {}) => table.urlColumns?.includes(column);
-const isNumberColumn = (column, table = {}) => table.numberColumns?.includes(column);
-const isTextareaColumn = (column, table = {}) => table.textareaColumns?.includes(column);
-const textareaMaxLengthFor = (column, table = {}) => table.textareaMaxLengths?.[column] || 500;
-const placeholderFor = (column, table = {}) => table.placeholders?.[column] || "";
-const selectOptionsFor = (column, table = {}) => table.selectOptions?.[column] || null;
+const findFieldForColumn = (column, table = {}) => {
+  if (!Array.isArray(table.fields)) return null;
+  const colStr = String(column || "").trim().toLowerCase();
+  return table.fields.find((f) => {
+    if (!f) return false;
+    const label = String(f.label || "").trim().toLowerCase();
+    const key = String(f.fieldKey || f.key || "").trim().toLowerCase();
+    const id = String(f.id || "").trim().toLowerCase();
+    return label === colStr || key === colStr || id === colStr;
+  });
+};
+
+const isAttachmentColumn = (column, table = {}) => {
+  if (table.urlColumns?.includes(column)) return false;
+  const field = findFieldForColumn(column, table);
+  if (field) {
+    const fieldType = String(field.fieldType || field.type || "").toUpperCase();
+    if (fieldType === "FILE" || fieldType === "ATTACHMENT") return true;
+  }
+  if (table.fileColumns?.includes(column) || table.attachmentColumns?.includes(column)) return true;
+  return /\b(link|proof|attachment|document|mom|attach|file|upload)\b/i.test(column);
+};
+
+const isDateColumn = (column, table = {}) => {
+  const field = findFieldForColumn(column, table);
+  if (field) {
+    const fieldType = String(field.fieldType || field.type || "").toUpperCase();
+    if (fieldType === "DATE") return true;
+  }
+  return table.dateColumns?.includes(column) || /^\s*date\s*$/i.test(column) || /\b(date)\b/i.test(column);
+};
+
+const isUrlColumn = (column, table = {}) => {
+  const field = findFieldForColumn(column, table);
+  if (field) {
+    const fieldType = String(field.fieldType || field.type || "").toUpperCase();
+    if (fieldType === "URL" || fieldType === "LINK") return true;
+  }
+  return table.urlColumns?.includes(column);
+};
+
+const isNumberColumn = (column, table = {}) => {
+  const field = findFieldForColumn(column, table);
+  if (field) {
+    const fieldType = String(field.fieldType || field.type || "").toUpperCase();
+    if (fieldType === "NUMBER" || fieldType === "INTEGER" || fieldType === "DECIMAL") return true;
+  }
+  return table.numberColumns?.includes(column);
+};
+
+const isTextareaColumn = (column, table = {}) => {
+  const field = findFieldForColumn(column, table);
+  if (field) {
+    const fieldType = String(field.fieldType || field.type || "").toUpperCase();
+    if (fieldType === "TEXTAREA" || fieldType === "PARAGRAPH") return true;
+  }
+  return table.textareaColumns?.includes(column);
+};
+
+const textareaMaxLengthFor = (column, table = {}) => {
+  const field = findFieldForColumn(column, table);
+  if (field?.validationRules?.maxLength) return Number(field.validationRules.maxLength);
+  return table.textareaMaxLengths?.[column] || 500;
+};
+
+const placeholderFor = (column, table = {}) => {
+  const field = findFieldForColumn(column, table);
+  if (field?.placeholder) return field.placeholder;
+  return table.placeholders?.[column] || "";
+};
+
+const selectOptionsFor = (column, table = {}) => {
+  const field = findFieldForColumn(column, table);
+  if (field) {
+    const fieldType = String(field.fieldType || field.type || "").toUpperCase();
+    if (fieldType === "SELECT" && Array.isArray(field.options) && field.options.length) {
+      return field.options;
+    }
+  }
+  return table.selectOptions?.[column] || null;
+};
 const normalizeColumnName = (value = "") =>
   String(value)
     .trim()
@@ -269,24 +340,6 @@ export default function AuditTable({
       )}
 
       {uploadError && <div style={styles.uploadError}>{uploadError}</div>}
-
-      {!!table.fields?.length && (
-        <div style={styles.embeddedFields}>
-          {table.fields.map((field) => (
-            <label key={field.id} style={styles.embeddedField}>
-              <span style={styles.embeddedLabel}>{field.label}</span>
-              <input
-                value={values[field.id] ?? ""}
-                onChange={(event) => onFieldChange(field.id, event.target.value)}
-                className="audit-control"
-                style={styles.embeddedInput}
-                type={field.type || "text"}
-                readOnly={readOnly}
-              />
-            </label>
-          ))}
-        </div>
-      )}
 
       <div style={{ ...styles.scroller, ...(fitToContainer ? styles.fittedScroller : {}) }}>
         <table

@@ -118,21 +118,25 @@ function FieldGrid({ fields, values, onFieldChange, readOnly = false }) {
 function TableList({ tableDefinitions, tableValues, values, onFieldChange, onTableChange, onAddRow, onDeleteLastRow, onUploadAttachment, onDeleteAttachment, readOnly = false }) {
   return (
     <div style={styles.tables}>
-      {tableDefinitions.map((table) => (
-        <AuditTable
-          key={table.id}
-          table={table}
-          rows={tableValues[table.id] || []}
-          values={values}
-          onFieldChange={onFieldChange}
-          onChange={(rowIndex, column, value) => onTableChange(table.id, rowIndex, column, value)}
-          onAddRow={onAddRow}
-          onDeleteLastRow={onDeleteLastRow}
-          onUploadAttachment={onUploadAttachment}
-          onDeleteAttachment={onDeleteAttachment}
-          readOnly={readOnly}
-        />
-      ))}
+      {tableDefinitions.map((table) => {
+        const tableKey = table.tableKey || table.idString || (table.id != null ? String(table.id) : "");
+        const rows = tableValues[tableKey] || (table.id != null ? tableValues[table.id] : []) || (table.tableKey ? tableValues[table.tableKey] : []) || [];
+        return (
+          <AuditTable
+            key={table.id || tableKey}
+            table={table}
+            rows={rows}
+            values={values}
+            onFieldChange={onFieldChange}
+            onChange={(rowIndex, column, value) => onTableChange(tableKey, rowIndex, column, value)}
+            onAddRow={onAddRow}
+            onDeleteLastRow={onDeleteLastRow}
+            onUploadAttachment={onUploadAttachment}
+            onDeleteAttachment={onDeleteAttachment}
+            readOnly={readOnly}
+          />
+        );
+      })}
     </div>
   );
 }

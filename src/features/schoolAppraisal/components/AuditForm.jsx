@@ -251,6 +251,7 @@ function buildInitialValues(schema) {
 }
 
 function buildInitialTables(schema) {
+  if (!schema?.sections) return {};
   return schema.sections.reduce((tables, section) => {
     const tableDefinitions = [
       ...(section.tables || []),
@@ -258,8 +259,13 @@ function buildInitialTables(schema) {
     ];
 
     tableDefinitions.forEach((table) => {
-      const rows = table.initialRows?.length ? table.initialRows : [numberedRowFor(table.columns, 0)];
-      tables[table.id] = withSerialNumbers(table.columns, rows);
+      const rows = table.initialRows?.length ? table.initialRows : [numberedRowFor(table.columns || [], 0)];
+      const formatted = withSerialNumbers(table.columns || [], rows);
+      const key = table.tableKey || table.idString || (table.id != null ? String(table.id) : "");
+      if (key) tables[key] = formatted;
+      if (table.id != null) tables[table.id] = formatted;
+      if (table.tableKey && !tables[table.tableKey]) tables[table.tableKey] = formatted;
+      if (table.idString && !tables[table.idString]) tables[table.idString] = formatted;
     });
     return tables;
   }, {});
@@ -302,7 +308,14 @@ export default function AuditForm({
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [academicPartEReview, setAcademicPartEReview] = useState(null);
   const [printReportAfterRender, setPrintReportAfterRender] = useState(false);
-  const activeSectionIndex = Math.max(0, schema.sections.findIndex((section) => section.id === activeSectionId));
+  const activeSectionIndex = Math.max(
+    0,
+    schema.sections.findIndex((section) =>
+      String(section.id) === String(activeSectionId) ||
+      String(section.sectionKey) === String(activeSectionId) ||
+      String(section.idString) === String(activeSectionId)
+    )
+  );
   const isLastSection = activeSectionIndex === schema.sections.length - 1;
   const isHistoricalYear = isHistoricalProp !== undefined
     ? isHistoricalProp
@@ -380,26 +393,52 @@ export default function AuditForm({
   };
 
   const handleTableChange = (tableId, rowIndex, column, value) => {
-    setTables((current) => ({
-      ...current,
-      [tableId]: current[tableId].map((row, index) => (index === rowIndex ? { ...row, [column]: value } : row)),
-    }));
+    setTables((current) => {
+      const strKey = String(tableId);
+      const existing = current[strKey] || (typeof tableId === "number" ? current[tableId] : []) || [];
+      let rows = Array.isArray(existing) ? [...existing] : [];
+      if (rowIndex >= rows.length) {
+        while (rows.length <= rowIndex) {
+          rows.push({});
+        }
+      }
+      rows = rows.map((row, index) => (index === rowIndex ? { ...row, [column]: value } : row));
+      return {
+        ...current,
+        [strKey]: rows,
+        ...(typeof tableId === "number" ? { [tableId]: rows } : {}),
+      };
+    });
     setStatus("");
   };
 
   const handleAddRow = (table) => {
-    setTables((current) => ({
-      ...current,
-      [table.id]: [...(current[table.id] || []), numberedRowFor(table.columns, current[table.id]?.length || 0)],
-    }));
+    const key = table.tableKey || table.idString || (table.id != null ? String(table.id) : "");
+    setTables((current) => {
+      const existing = current[key] || (table.id != null ? current[table.id] : []) || [];
+      const rows = Array.isArray(existing) ? existing : [];
+      const nextRows = [...rows, numberedRowFor(table.columns || [], rows.length)];
+      return {
+        ...current,
+        ...(key ? { [key]: nextRows } : {}),
+        ...(table.id != null ? { [table.id]: nextRows } : {}),
+        ...(table.tableKey ? { [table.tableKey]: nextRows } : {}),
+      };
+    });
   };
 
   const handleDeleteLastRow = (table) => {
+    const key = table.tableKey || table.idString || (table.id != null ? String(table.id) : "");
     setTables((current) => {
-      const nextRows = (current[table.id] || []).slice(0, -1);
+      const existing = current[key] || (table.id != null ? current[table.id] : []) || [];
+      const rows = Array.isArray(existing) ? existing : [];
+      const nextRows = rows.slice(0, -1);
+      const formatted = nextRows.length ? withSerialNumbers(table.columns || [], nextRows) : [numberedRowFor(table.columns || [], 0)];
       return {
         ...current,
-        [table.id]: nextRows.length ? withSerialNumbers(table.columns, nextRows) : [numberedRowFor(table.columns, 0)],
+        ...(key ? { [key]: formatted } : {}),
+        ...(table.id != null ? { [table.id]: formatted } : {}),
+        ...(table.tableKey ? { [table.tableKey]: formatted } : {}),
       };
     });
   };
@@ -422,9 +461,9 @@ export default function AuditForm({
   };
 
   const handleSaveAndNext = async () => {
-    const sectionIds = schema.sections.map((section) => section.id);
-    const currentIndex = sectionIds.indexOf(activeSectionId);
-    const nextSectionId = sectionIds[Math.min(currentIndex + 1, sectionIds.length - 1)];
+    const currentIndex = activeSectionIndex;
+    const nextSection = schema.sections[Math.min(currentIndex + 1, schema.sections.length - 1)];
+    const nextSectionId = nextSection ? (nextSection.id || nextSection.sectionKey || nextSection.idString) : null;
 
     if (readOnly) {
       if (nextSectionId && nextSectionId !== activeSectionId) {
@@ -540,8 +579,8 @@ export default function AuditForm({
             <p style={styles.meta}>{schema.header.address}</p>
             <div style={styles.headerMetaRow}>
               <span style={styles.year}>Academic Year {academicYear}</span>
-              <span style={isHistoricalYear ? styles.readOnlyPill : styles.draftPill}>
-                {isHistoricalYear ? "Read Only" : "Current Workspace"}
+              <span style={isHistoricalYear ? styles.readOnlyPill : isSubmitted ? styles.readOnlyPill : styles.draftPill}>
+                {isHistoricalYear ? "Read Only" : isSubmitted ? "Submitted (Read Only)" : "Current Workspace"}
               </span>
             </div>
           </div>
@@ -583,6 +622,26 @@ export default function AuditForm({
         </div>
       )}
 
+      {isSubmitted && !isHistoricalYear && (
+        <div style={{
+          backgroundColor: "#f0fdf4",
+          border: "1px solid #bbf7d0",
+          color: "#166534",
+          padding: "12px 16px",
+          borderRadius: "8px",
+          marginTop: "16px",
+          marginBottom: "16px",
+          fontSize: "14px",
+          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+        }}>
+          <span style={{ fontSize: "16px" }}>✅</span>
+          <span>This appraisal for Academic Year <strong>{academicYear}</strong> has already been submitted and is currently under review. The form is displayed in view-only mode.</span>
+        </div>
+      )}
+
       {status && <div style={styles.status}>{status}</div>}
       {loadingDraft && <LoadingState label="Loading saved form..." compact />}
 
@@ -590,10 +649,15 @@ export default function AuditForm({
         {loadingDraft ? (
           <SkeletonList rows={2} />
         ) : schema.sections
-          .filter((section) => !activeSectionId || section.id === activeSectionId)
+          .filter((section) =>
+            !activeSectionId ||
+            String(section.id) === String(activeSectionId) ||
+            String(section.sectionKey) === String(activeSectionId) ||
+            String(section.idString) === String(activeSectionId)
+          )
           .map((section) => (
             <AuditSection
-              key={section.id}
+              key={section.id || section.sectionKey || section.idString}
               section={section}
               values={values}
               tables={tables}

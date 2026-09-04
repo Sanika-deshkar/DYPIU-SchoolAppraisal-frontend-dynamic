@@ -213,9 +213,11 @@ export default function AuditReportPanel({
 
             return block.tables.map((table) => {
               const columns = columnsWithSerial(table.columns);
+              const tableKey = table.tableKey || table.idString || (table.id != null ? String(table.id) : "");
+              const rows = tables[tableKey] || (table.id != null ? tables[table.id] : []) || (table.tableKey ? tables[table.tableKey] : []) || [];
 
               return (
-                <div className="generated-report__table-block" key={table.id} style={styles.tableBlock}>
+                <div className="generated-report__table-block" key={table.id || tableKey} style={styles.tableBlock}>
                   {table.showTitle !== false && <h3 className="generated-report__table-title" style={styles.tableTitle}>{table.title}</h3>}
                   <div className="generated-report__table-wrap" style={styles.tableScroller}>
                   <table className="audit-data-table" style={styles.table}>
@@ -229,8 +231,8 @@ export default function AuditReportPanel({
                         </tr>
                       </thead>
                       <tbody>
-                        {(tables[table.id] || []).map((row, rowIndex) => (
-                          <tr key={`${table.id}-${rowIndex}`}>
+                        {rows.map((row, rowIndex) => (
+                          <tr key={`${table.id || tableKey}-${rowIndex}`}>
                             {columns.map((column) => (
                               <td key={column} style={styles.td}>
                                 <ReportCellValue value={row[column]} />

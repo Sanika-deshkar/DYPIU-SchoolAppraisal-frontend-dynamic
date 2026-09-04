@@ -1,9 +1,10 @@
 import apiClient from '../../../api/client';
 
-export const getSchemas = async (universityId, universityCode) => {
+export const getSchemas = async (universityId, universityCode, auditType) => {
   const params = {};
   if (universityId) params.universityId = universityId;
   if (universityCode) params.universityCode = universityCode;
+  if (auditType) params.auditType = auditType;
   const res = await apiClient.get('/api/admin/config/schemas', { params });
   return res.data;
 };
@@ -147,6 +148,30 @@ export const getAvailableTables = async (universityId, universityCode) => {
   if (universityCode) params.universityCode = universityCode;
   const res = await apiClient.get('/api/admin/config/tables/available', { params });
   return res.data || [];
+};
+
+// University Administrative Posts Management
+export const getUniversityPosts = async (universityId, all = false) => {
+  if (!universityId) return [];
+  const res = await apiClient.get(`/api/admin/config/universities/${universityId}/posts`, {
+    params: all ? { all: true } : undefined,
+  });
+  return res.data || [];
+};
+
+export const createUniversityPost = async (universityId, payload) => {
+  const res = await apiClient.post(`/api/admin/config/universities/${universityId}/posts`, payload);
+  return res.data;
+};
+
+export const updateUniversityPost = async (universityId, postId, payload) => {
+  const res = await apiClient.put(`/api/admin/config/universities/${universityId}/posts/${postId}`, payload);
+  return res.data;
+};
+
+export const deleteUniversityPost = async (universityId, postId) => {
+  const res = await apiClient.delete(`/api/admin/config/universities/${universityId}/posts/${postId}`);
+  return res.data;
 };
 
 

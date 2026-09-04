@@ -13,10 +13,12 @@ import {
   deleteField,
   copyTable,
   getAvailableTables,
+  getUniversityPosts,
 } from './formStudioApi';
 
 export const FormBuilderCanvas = ({
   versionId,
+  selectedUniversity,
   onPublishSuccess,
   onOpenPreview,
   onBackToSchemas,
@@ -26,6 +28,9 @@ export const FormBuilderCanvas = ({
   const [error, setError] = useState(null);
   const [publishing, setPublishing] = useState(false);
   const [publishMessage, setPublishMessage] = useState(null);
+
+  // University Posts for Administrative Assignment
+  const [universityPosts, setUniversityPosts] = useState([]);
 
   // Active navigation selection
   const [activeSectionId, setActiveSectionId] = useState(null);
@@ -45,7 +50,7 @@ export const FormBuilderCanvas = ({
     data: { id: null, title: '', tableKey: '', isRepeatable: true, showTitle: true },
   });
 
-  // Copy Table Modal State
+  // Copy Table Modal State (Academic Flow Only)
   const [copyTableModal, setCopyTableModal] = useState({
     show: false,
     sectionId: null,
@@ -73,6 +78,17 @@ export const FormBuilderCanvas = ({
     },
   });
 
+  const effectiveUniversityId = selectedUniversity?.id || 1;
+
+  const loadPosts = async () => {
+    try {
+      const posts = await getUniversityPosts(effectiveUniversityId, true);
+      setUniversityPosts(posts || []);
+    } catch (err) {
+      console.error('Failed to load posts in FormBuilderCanvas:', err);
+    }
+  };
+
   const loadTree = async () => {
     if (!versionId) return;
     setLoading(true);
@@ -92,14 +108,21 @@ export const FormBuilderCanvas = ({
 
   useEffect(() => {
     loadTree();
+    loadPosts();
   }, [versionId]);
+
+  const isAdministrative = tree?.auditType === 'administrative';
 
   // Section Handlers
   const handleOpenAddSection = () => {
+    const defaultRole = isAdministrative
+      ? (universityPosts[0]?.code?.toLowerCase() || 'registrar')
+      : 'director-schools';
+
     setSectionModal({
       show: true,
       isEdit: false,
-      data: { id: null, title: '', sectionNumber: '', ownerRole: 'director-schools', description: '' },
+      data: { id: null, title: '', sectionNumber: '', ownerRole: defaultRole, description: '' },
     });
   };
 
@@ -111,7 +134,7 @@ export const FormBuilderCanvas = ({
         id: sec.id,
         title: sec.title,
         sectionNumber: sec.number || '',
-        ownerRole: sec.ownerRole || 'director-schools',
+        ownerRole: sec.ownerRole || (isAdministrative ? 'registrar' : 'director-schools'),
         description: sec.description || '',
       },
     });
@@ -214,10 +237,11 @@ export const FormBuilderCanvas = ({
     }
   };
 
+  // Copy Table Handlers (Academic Flow Only)
   const handleOpenCopyTable = async (secId) => {
     setLoadingTables(true);
     try {
-      const tables = await getAvailableTables();
+      const tables = await getAvailableTables(effectiveUniversityId, selectedUniversity?.code);
       setAvailableTables(tables || []);
       setCopyTableModal({
         show: true,
@@ -253,7 +277,7 @@ export const FormBuilderCanvas = ({
     }
   };
 
-  // Field Handlers
+  // Field / Column Handlers
   const handleOpenAddField = (secId, tblId = null) => {
     setFieldModal({
       show: true,
@@ -321,7 +345,7 @@ export const FormBuilderCanvas = ({
       setFieldModal({ ...fieldModal, show: false });
       await loadTree();
     } catch (err) {
-      alert('Error saving field: ' + err.message);
+      alert('Error saving field/column: ' + err.message);
     }
   };
 
@@ -382,6 +406,18 @@ export const FormBuilderCanvas = ({
 
   const currentSection = tree.sections?.find((s) => s.id === activeSectionId) || tree.sections?.[0];
 
+  const getPostLabel = (roleKey) => {
+    if (!roleKey) return '-';
+    const match = universityPosts.find((p) => p.code?.toLowerCase() === roleKey.toLowerCase() || p.name?.toLowerCase() === roleKey.toLowerCase());
+    if (match) return `${match.name} (${match.code})`;
+    if (roleKey === 'director-schools') return 'Director / Dean';
+    if (roleKey === 'registrar') return 'Registrar Office';
+    if (roleKey === 'hr') return 'HR Office';
+    if (roleKey === 'dean-student-welfare') return 'Dean Student Welfare';
+    if (roleKey === 'dean-placement') return 'Dean Placement';
+    return roleKey;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc' }}>
       {/* Top Toolbar */}
@@ -400,7 +436,9 @@ export const FormBuilderCanvas = ({
               <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 7px', borderRadius: '5px', background: '#fef3c7', color: '#92400e' }}>
                 Draft Version {tree.versionNumber}
               </span>
-              <small style={{ color: '#64748b', fontSize: '12px' }}>Type: {tree.auditType?.toUpperCase()}</small>
+              <small style={{ color: '#64748b', fontSize: '12px' }}>
+                Type: <strong>{isAdministrative ? 'ADMINISTRATIVE (Single Form)' : 'ACADEMIC (School-Based)'}</strong>
+              </small>
             </div>
           </div>
         </div>
@@ -431,7 +469,7 @@ export const FormBuilderCanvas = ({
         <div style={{ background: '#fff', borderRight: '1px solid #e2e8f0', padding: '16px', overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
             <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Form Structure
+              Form Sections
             </span>
             <button
               type="button"
@@ -492,7 +530,15 @@ export const FormBuilderCanvas = ({
                     </span>
                     <h3 style={{ margin: '0 0 4px', fontWeight: 800, color: '#0f172a', fontSize: '18px' }}>{currentSection.title}</h3>
                     <p style={{ margin: 0, color: '#64748b', fontSize: '12.5px' }}>
-                      Owner Role: <strong>{currentSection.ownerRole || 'director-schools'}</strong>
+                      {isAdministrative ? (
+                        <span>
+                          👔 Assigned Administrative Post: <strong className="text-primary">{getPostLabel(currentSection.ownerRole)}</strong>
+                        </span>
+                      ) : (
+                        <span>
+                          Owner Role: <strong>{currentSection.ownerRole || 'director-schools'}</strong>
+                        </span>
+                      )}
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
@@ -566,13 +612,16 @@ export const FormBuilderCanvas = ({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                 <h4 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '16px' }}>📊 Tables in Section</h4>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    style={{ padding: '6px 14px', borderRadius: '7px', border: '1px solid #93c5fd', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
-                    onClick={() => handleOpenCopyTable(currentSection.id)}
-                  >
-                    📋 Copy Table from Another Form
-                  </button>
+                  {/* Copy Table button ONLY appears in Academic Flow (not in Administrative flow) */}
+                  {!isAdministrative && (
+                    <button
+                      type="button"
+                      style={{ padding: '6px 14px', borderRadius: '7px', border: '1px solid #93c5fd', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+                      onClick={() => handleOpenCopyTable(currentSection.id)}
+                    >
+                      📋 Copy Table from Another Form
+                    </button>
+                  )}
                   <button
                     type="button"
                     style={{ padding: '6px 14px', borderRadius: '7px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
@@ -649,7 +698,7 @@ export const FormBuilderCanvas = ({
                                 type="button"
                                 style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '0 2px' }}
                                 onClick={() => handleOpenEditField(col, currentSection.id, tbl.id)}
-                                title="Edit Column"
+                                title="Edit Column (Rename / Settings)"
                               >
                                 ✏️
                               </button>
@@ -714,7 +763,7 @@ export const FormBuilderCanvas = ({
                   <input
                     type="text"
                     style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                    placeholder="e.g. Part A - Academic Activities"
+                    placeholder={isAdministrative ? 'e.g. Part A - General Governance & Records' : 'e.g. Part A - Academic & Teaching Activities'}
                     required
                     value={sectionModal.data.title}
                     onChange={(e) =>
@@ -742,23 +791,50 @@ export const FormBuilderCanvas = ({
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Owner Role</label>
-                    <select
-                      style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                      value={sectionModal.data.ownerRole}
-                      onChange={(e) =>
-                        setSectionModal({
-                          ...sectionModal,
-                          data: { ...sectionModal.data, ownerRole: e.target.value },
-                        })
-                      }
-                    >
-                      <option value="director-schools">Director / Dean</option>
-                      <option value="registrar">Registrar</option>
-                      <option value="hr">HR Office</option>
-                      <option value="dean-student-welfare">Dean Student Welfare</option>
-                      <option value="dean-placement">Dean Placement</option>
-                    </select>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>
+                      {isAdministrative ? 'Assigned Post / Office*' : 'Owner Role'}
+                    </label>
+                    {isAdministrative ? (
+                      <select
+                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
+                        value={sectionModal.data.ownerRole}
+                        onChange={(e) =>
+                          setSectionModal({
+                            ...sectionModal,
+                            data: { ...sectionModal.data, ownerRole: e.target.value },
+                          })
+                        }
+                      >
+                        {universityPosts.length === 0 ? (
+                          <>
+                            <option value="registrar">Registrar</option>
+                            <option value="hr">HR Office</option>
+                            <option value="dean-student-welfare">Dean Student Welfare</option>
+                            <option value="dean-placement">Dean Placement</option>
+                          </>
+                        ) : (
+                          universityPosts.map((post) => (
+                            <option key={post.id} value={post.code.toLowerCase()}>
+                              {post.name} ({post.code})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    ) : (
+                      <select
+                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
+                        value={sectionModal.data.ownerRole}
+                        onChange={(e) =>
+                          setSectionModal({
+                            ...sectionModal,
+                            data: { ...sectionModal.data, ownerRole: e.target.value },
+                          })
+                        }
+                      >
+                        <option value="director-schools">Director / Dean</option>
+                        <option value="faculty">Faculty Member</option>
+                      </select>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -820,7 +896,7 @@ export const FormBuilderCanvas = ({
                   <input
                     type="text"
                     style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                    placeholder="e.g. 1. Research Publications in UGC CARE / Scopus"
+                    placeholder="e.g. Student Enrollment Statistics"
                     required
                     value={tableModal.data.title}
                     onChange={(e) =>
@@ -832,11 +908,11 @@ export const FormBuilderCanvas = ({
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Unique Table Key</label>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Table Key (Unique Identifier)</label>
                   <input
                     type="text"
                     style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                    placeholder="e.g. researchPublications (auto-generated if empty)"
+                    placeholder="e.g. student_enrollment (leave blank to auto-generate)"
                     value={tableModal.data.tableKey}
                     onChange={(e) =>
                       setTableModal({
@@ -846,20 +922,19 @@ export const FormBuilderCanvas = ({
                     }
                   />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="checkbox"
-                    id="repeatableCheck"
-                    checked={tableModal.data.isRepeatable}
-                    onChange={(e) =>
-                      setTableModal({
-                        ...tableModal,
-                        data: { ...tableModal.data, isRepeatable: e.target.checked },
-                      })
-                    }
-                  />
-                  <label htmlFor="repeatableCheck" style={{ fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}>
-                    Allow adding dynamic rows (Dynamic Repeatable Table)
+                <div style={{ display: 'flex', gap: '20px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={tableModal.data.isRepeatable}
+                      onChange={(e) =>
+                        setTableModal({
+                          ...tableModal,
+                          data: { ...tableModal.data, isRepeatable: e.target.checked },
+                        })
+                      }
+                    />
+                    <span>Allow Dynamic Repeating Rows (Grid)</span>
                   </label>
                 </div>
               </div>
@@ -883,13 +958,97 @@ export const FormBuilderCanvas = ({
         </div>
       )}
 
+      {/* Copy Table Modal (Academic Flow Only) */}
+      {copyTableModal.show && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1050, background: 'rgba(15,23,42,0.5)', display: 'grid', placeItems: 'center', padding: '20px' }}>
+          <div style={{ width: '100%', maxWidth: '520px', background: '#fff', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ padding: '16px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '16px' }}>
+                📋 Copy Table from Another Form (Avoid Rework)
+              </h4>
+              <button
+                type="button"
+                style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px', color: '#64748b' }}
+                onClick={() => setCopyTableModal({ ...copyTableModal, show: false })}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleExecuteCopyTable}>
+              <div style={{ padding: '20px', display: 'grid', gap: '14px' }}>
+                {loadingTables ? (
+                  <p style={{ color: '#64748b', fontSize: '13px' }}>Loading available tables...</p>
+                ) : availableTables.length === 0 ? (
+                  <p style={{ color: '#dc2626', fontSize: '13px' }}>No existing tables available to copy from in this university.</p>
+                ) : (
+                  <>
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Source Table to Copy*</label>
+                      <select
+                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
+                        value={copyTableModal.sourceTableId}
+                        onChange={(e) => {
+                          const srcId = e.target.value;
+                          const src = availableTables.find((t) => String(t.tableId) === String(srcId));
+                          setCopyTableModal({
+                            ...copyTableModal,
+                            sourceTableId: srcId,
+                            newTitle: src ? `${src.title} (Copy)` : '',
+                          });
+                        }}
+                      >
+                        {availableTables.map((t) => (
+                          <option key={t.tableId} value={t.tableId}>
+                            {t.title} (from: {t.schemaName})
+                          </option>
+                        ))}
+                      </select>
+                      <small style={{ color: '#64748b', fontSize: '11.5px', marginTop: '4px', display: 'block' }}>
+                        All columns from this source table will be duplicated into your section. You can rename, add, or remove columns afterwards.
+                      </small>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>New Table Title</label>
+                      <input
+                        type="text"
+                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
+                        value={copyTableModal.newTitle}
+                        onChange={(e) => setCopyTableModal({ ...copyTableModal, newTitle: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+              <div style={{ padding: '14px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  style={{ padding: '8px 16px', borderRadius: '7px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  onClick={() => setCopyTableModal({ ...copyTableModal, show: false })}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={availableTables.length === 0}
+                  style={{ padding: '8px 18px', borderRadius: '7px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  📋 Copy Table Structure
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Field / Column Modal */}
       {fieldModal.show && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1050, background: 'rgba(15,23,42,0.5)', display: 'grid', placeItems: 'center', padding: '20px' }}>
           <div style={{ width: '100%', maxWidth: '520px', background: '#fff', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
             <div style={{ padding: '16px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h4 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '16px' }}>
-                {fieldModal.isEdit ? '✏️ Edit Field / Column' : '➕ Add Field / Column'}
+                {fieldModal.isEdit ? '✏️ Edit Column / Field' : fieldModal.tableId ? '➕ Add Column to Table' : '➕ Add Header Field'}
               </h4>
               <button
                 type="button"
@@ -902,11 +1061,13 @@ export const FormBuilderCanvas = ({
             <form onSubmit={handleSaveField}>
               <div style={{ padding: '20px', display: 'grid', gap: '14px' }}>
                 <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Label / Column Header*</label>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>
+                    {fieldModal.tableId ? 'Column Header / Label*' : 'Field Label*'}
+                  </label>
                   <input
                     type="text"
                     style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                    placeholder="e.g. Title of Paper, Date of Meeting"
+                    placeholder="e.g. Total Number of Students"
                     required
                     value={fieldModal.data.label}
                     onChange={(e) =>
@@ -918,37 +1079,54 @@ export const FormBuilderCanvas = ({
                   />
                 </div>
 
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Field Type*</label>
-                  <select
-                    style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                    value={fieldModal.data.fieldType}
-                    onChange={(e) =>
-                      setFieldModal({
-                        ...fieldModal,
-                        data: { ...fieldModal.data, fieldType: e.target.value },
-                      })
-                    }
-                  >
-                    <option value="TEXT">Short Text</option>
-                    <option value="NUMBER">Number</option>
-                    <option value="DATE">Date Picker</option>
-                    <option value="SELECT">Dropdown (Select)</option>
-                    <option value="TEXTAREA">Multi-line Textarea</option>
-                    <option value="ATTACHMENT">File / Document Attachment</option>
-                    <option value="EMAIL">Email</option>
-                    <option value="URL">Web URL</option>
-                  </select>
-                </div>
-
-                {fieldModal.data.fieldType === 'SELECT' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Dropdown Options (Comma-separated)*</label>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Data Type</label>
+                    <select
+                      style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
+                      value={fieldModal.data.fieldType}
+                      onChange={(e) =>
+                        setFieldModal({
+                          ...fieldModal,
+                          data: { ...fieldModal.data, fieldType: e.target.value },
+                        })
+                      }
+                    >
+                      <option value="TEXT">Single Line Text</option>
+                      <option value="TEXTAREA">Multi-line Textarea</option>
+                      <option value="NUMBER">Number</option>
+                      <option value="DROPDOWN">Dropdown / Select</option>
+                      <option value="DATE">Date Picker</option>
+                      <option value="RADIO">Radio Choices</option>
+                      <option value="CHECKBOX">Checkbox</option>
+                      <option value="FILE">Document / File Upload</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Field Key</label>
                     <input
                       type="text"
                       style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                      placeholder="e.g. Available, Not Available OR SC, ST, OBC, General"
-                      required
+                      placeholder="e.g. total_students (auto)"
+                      value={fieldModal.data.fieldKey}
+                      onChange={(e) =>
+                        setFieldModal({
+                          ...fieldModal,
+                          data: { ...fieldModal.data, fieldKey: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                {(fieldModal.data.fieldType === 'DROPDOWN' || fieldModal.data.fieldType === 'RADIO') && (
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Options (Comma-separated)</label>
+                    <input
+                      type="text"
+                      style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
+                      placeholder="e.g. Yes, No, In Progress, N/A"
                       value={fieldModal.data.optionsString}
                       onChange={(e) =>
                         setFieldModal({
@@ -960,20 +1138,19 @@ export const FormBuilderCanvas = ({
                   </div>
                 )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="checkbox"
-                    id="reqCheck"
-                    checked={fieldModal.data.isRequired}
-                    onChange={(e) =>
-                      setFieldModal({
-                        ...fieldModal,
-                        data: { ...fieldModal.data, isRequired: e.target.checked },
-                      })
-                    }
-                  />
-                  <label htmlFor="reqCheck" style={{ fontWeight: 600, fontSize: '13px', cursor: 'pointer' }}>
-                    Required Field
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={fieldModal.data.isRequired}
+                      onChange={(e) =>
+                        setFieldModal({
+                          ...fieldModal,
+                          data: { ...fieldModal.data, isRequired: e.target.checked },
+                        })
+                      }
+                    />
+                    <span>Mark as Required (Mandatory input)</span>
                   </label>
                 </div>
               </div>
@@ -989,134 +1166,7 @@ export const FormBuilderCanvas = ({
                   type="submit"
                   style={{ padding: '8px 18px', borderRadius: '7px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
                 >
-                  Save Field
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Copy / Duplicate Table Modal */}
-      {copyTableModal.show && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1050, background: 'rgba(15,23,42,0.5)', display: 'grid', placeItems: 'center', padding: '20px' }}>
-          <div style={{ width: '100%', maxWidth: '580px', maxHeight: '90vh', background: '#fff', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '16px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h4 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '16px' }}>
-                📋 Copy Existing Table (Avoid Rework)
-              </h4>
-              <button
-                type="button"
-                style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '18px', color: '#64748b' }}
-                onClick={() => setCopyTableModal({ ...copyTableModal, show: false })}
-              >
-                ✕
-              </button>
-            </div>
-            <form onSubmit={handleExecuteCopyTable} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ padding: '20px', overflowY: 'auto', display: 'grid', gap: '14px' }}>
-                <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
-                  Select an existing table from any appraisal schema in this university. All columns, validations, and settings will be copied into this section so you can customize them.
-                </p>
-
-                {loadingTables ? (
-                  <div style={{ textAlign: 'center', padding: '20px' }}>
-                    <div className="spinner-border text-primary spinner-border-sm" role="status"></div>
-                    <span style={{ marginLeft: '8px', fontSize: '13px', color: '#64748b' }}>Loading available tables...</span>
-                  </div>
-                ) : availableTables.length === 0 ? (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '12px', color: '#b91c1c', fontSize: '13px' }}>
-                    No tables available to copy. Create a table first or import a schema template.
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', marginBottom: '4px' }}>
-                        Source Table to Copy*
-                      </label>
-                      <select
-                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px' }}
-                        value={copyTableModal.sourceTableId}
-                        onChange={(e) => {
-                          const tId = e.target.value;
-                          const found = availableTables.find((t) => String(t.tableId) === String(tId));
-                          setCopyTableModal({
-                            ...copyTableModal,
-                            sourceTableId: tId,
-                            newTitle: found ? `${found.title} (Copy)` : copyTableModal.newTitle,
-                            newTableKey: found ? `${found.tableKey}_copy_${Date.now() % 1000}` : '',
-                          });
-                        }}
-                        required
-                      >
-                        {availableTables.map((t) => (
-                          <option key={t.tableId} value={t.tableId}>
-                            {t.title} — ({t.columnCount} columns) [Form: {t.schemaName}, Section: {t.sectionTitle}]
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Source Table Summary Badge */}
-                    {(() => {
-                      const sel = availableTables.find((t) => String(t.tableId) === String(copyTableModal.sourceTableId));
-                      if (!sel) return null;
-                      return (
-                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 14px', fontSize: '12.5px' }}>
-                          <div><strong>Form Schema:</strong> {sel.schemaName} ({sel.auditType?.toUpperCase()})</div>
-                          <div><strong>Source Section:</strong> {sel.sectionTitle}</div>
-                          <div><strong>Original Key:</strong> <code>{sel.tableKey}</code> | <strong>Columns:</strong> {sel.columnCount} fields</div>
-                        </div>
-                      );
-                    })()}
-
-                    <div>
-                      <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>
-                        New Table Title in this Section*
-                      </label>
-                      <input
-                        type="text"
-                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                        required
-                        value={copyTableModal.newTitle}
-                        onChange={(e) =>
-                          setCopyTableModal({ ...copyTableModal, newTitle: e.target.value })
-                        }
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>
-                        New Table Unique Key (Optional - Auto generated if blank)
-                      </label>
-                      <input
-                        type="text"
-                        style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                        placeholder="e.g. research_publications_management"
-                        value={copyTableModal.newTableKey}
-                        onChange={(e) =>
-                          setCopyTableModal({ ...copyTableModal, newTableKey: e.target.value })
-                        }
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div style={{ padding: '14px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button
-                  type="button"
-                  style={{ padding: '8px 16px', borderRadius: '7px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
-                  onClick={() => setCopyTableModal({ ...copyTableModal, show: false })}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loadingTables || availableTables.length === 0}
-                  style={{ padding: '8px 18px', borderRadius: '7px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: (loadingTables || availableTables.length === 0) ? 0.6 : 1 }}
-                >
-                  📋 Copy Table & Columns
+                  Save Column / Field
                 </button>
               </div>
             </form>

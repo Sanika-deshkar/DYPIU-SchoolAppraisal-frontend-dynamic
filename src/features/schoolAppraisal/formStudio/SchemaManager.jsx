@@ -15,6 +15,7 @@ import {
 
 export const SchemaManager = ({
   selectedUniversity,
+  formType = 'academic', // 'academic' or 'administrative'
   onOpenBuilder,
   onOpenPreview,
 }) => {
@@ -31,12 +32,12 @@ export const SchemaManager = ({
   const [newSchemaScope, setNewSchemaScope] = useState('ALL'); // 'ALL' or 'SPECIFIC'
   const [selectedSchoolCodes, setSelectedSchoolCodes] = useState([]);
   const [newSchemaForm, setNewSchemaForm] = useState({
-    auditType: 'academic',
+    auditType: formType,
     name: '',
     description: '',
   });
 
-  // Edit Scope Modal State
+  // Edit Scope Modal State (Academic only)
   const [showEditScopeModal, setShowEditScopeModal] = useState(false);
   const [editScopeSchema, setEditScopeSchema] = useState(null);
   const [editScopeMode, setEditScopeMode] = useState('ALL');
@@ -44,9 +45,10 @@ export const SchemaManager = ({
   const [editScopeName, setEditScopeName] = useState('');
 
   const effectiveUniversityId = selectedUniversity?.id || 1;
+  const isAdministrative = formType === 'administrative';
 
   const loadSchools = async () => {
-    if (!effectiveUniversityId) return;
+    if (!effectiveUniversityId || isAdministrative) return;
     try {
       const schools = await getUniversitySchools(effectiveUniversityId, true);
       setUniversitySchools(schools || []);
@@ -60,7 +62,7 @@ export const SchemaManager = ({
     setLoading(true);
     setError(null);
     try {
-      const data = await getSchemas(selectedUniversity.id, selectedUniversity.code);
+      const data = await getSchemas(selectedUniversity.id, selectedUniversity.code, formType);
       setSchemas(data || []);
       if (data && data.length > 0) {
         const match = selectedSchema ? data.find((s) => s.id === selectedSchema.id) : null;
@@ -79,7 +81,7 @@ export const SchemaManager = ({
   useEffect(() => {
     loadSchools();
     loadSchemas();
-  }, [selectedUniversity]);
+  }, [selectedUniversity, formType]);
 
   const handleSelectSchema = async (s) => {
     setSelectedSchema(s);
@@ -134,7 +136,7 @@ export const SchemaManager = ({
   };
 
   const handleClearAllSchemas = async () => {
-    if (!window.confirm('Are you sure you want to delete ALL form schemas and start completely fresh?')) {
+    if (!window.confirm('Are you sure you want to delete ALL form schemas for this university and start completely fresh?')) {
       return;
     }
     try {
@@ -167,7 +169,7 @@ export const SchemaManager = ({
     if (cloneSource) {
       setCloneFromSchemaId(String(cloneSource.id));
       setNewSchemaForm({
-        auditType: cloneSource.auditType || 'academic',
+        auditType: formType,
         name: `${cloneSource.name} (Copy)`,
         description: cloneSource.description || '',
       });
@@ -176,8 +178,10 @@ export const SchemaManager = ({
     } else {
       setCloneFromSchemaId('');
       setNewSchemaForm({
-        auditType: 'academic',
-        name: '',
+        auditType: formType,
+        name: isAdministrative
+          ? `${selectedUniversity?.name || 'University'} Administrative Appraisal Form`
+          : '',
         description: '',
       });
       setNewSchemaScope('ALL');
@@ -197,15 +201,17 @@ export const SchemaManager = ({
   const handleCreateSchemaSubmit = async (e) => {
     e.preventDefault();
     try {
-      const assigned = newSchemaScope === 'ALL'
+      const assigned = isAdministrative
         ? 'ALL'
-        : JSON.stringify(selectedSchoolCodes);
+        : newSchemaScope === 'ALL'
+          ? 'ALL'
+          : JSON.stringify(selectedSchoolCodes);
 
       if (cloneFromSchemaId) {
         // Clone from existing schema
         await cloneSchema(cloneFromSchemaId, {
           newName: newSchemaForm.name,
-          auditType: newSchemaForm.auditType,
+          auditType: formType,
           universityId: selectedUniversity.id,
           assignedSchools: assigned,
         });
@@ -213,6 +219,7 @@ export const SchemaManager = ({
         // Create new schema from scratch
         await createSchema({
           ...newSchemaForm,
+          auditType: formType,
           assignedSchools: assigned,
           universityId: selectedUniversity.id,
         });
@@ -225,7 +232,7 @@ export const SchemaManager = ({
     }
   };
 
-  // Open Edit Scope Modal
+  // Open Edit Scope Modal (Academic Only)
   const handleOpenEditScope = (schema) => {
     setEditScopeSchema(schema);
     setEditScopeName(schema.name || '');
@@ -283,9 +290,15 @@ export const SchemaManager = ({
       {/* Header section with instructions & actions */}
       <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
         <div>
-          <h2 className="fw-bold text-dark mb-1" style={{ fontSize: '22px' }}>📋 Appraisal Form Schemas & Versions</h2>
+          <h2 className="fw-bold text-dark mb-1" style={{ fontSize: '22px' }}>
+            {isAdministrative
+              ? '📋 Single University Administrative Form'
+              : '📋 Academic Appraisal Form Schemas'}
+          </h2>
           <p className="text-muted mb-0" style={{ fontSize: '13.5px' }}>
-            Design, version, copy, and assign institutional appraisal forms for{' '}
+            {isAdministrative
+              ? `Manage and version the single unified administrative appraisal form for `
+              : `Design, version, copy, and assign institutional appraisal forms across academic schools for `}
             <strong className="text-primary">{selectedUniversity?.name || 'Your University'}</strong>.
           </p>
         </div>
@@ -297,29 +310,37 @@ export const SchemaManager = ({
               style={{ borderRadius: '8px', border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', cursor: 'pointer', padding: '8px 16px', fontWeight: 600 }}
               onClick={handleClearAllSchemas}
             >
-              🗑️ Clear All Schemas
+              🗑️ Clear All
             </button>
           )}
-          <button
-            type="button"
-            className="btn btn-primary px-3 py-2 fw-semibold shadow-sm"
-            style={{ borderRadius: '8px', background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', padding: '8px 16px', fontWeight: 600 }}
-            onClick={() => handleOpenCreateModal()}
-          >
-            + Create New Form Schema
-          </button>
+          {(!isAdministrative || schemas.length === 0) && (
+            <button
+              type="button"
+              className="btn btn-primary px-3 py-2 fw-semibold shadow-sm"
+              style={{ borderRadius: '8px', background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', padding: '8px 16px', fontWeight: 600 }}
+              onClick={() => handleOpenCreateModal()}
+            >
+              {isAdministrative ? '+ Create Single Administrative Form' : '+ Create New Form Schema'}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Info card describing the 2 conditions & copy capability */}
-      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 18px', marginBottom: '20px', fontSize: '13px', color: '#166534', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-        <div>
-          <strong>💡 School-Level Form Flexibility:</strong> Within this university, multiple schools can either share the <em>same form</em> (Condition 2), or have <em>different custom forms</em> (Condition 1). Use <strong>"📋 Copy Form"</strong> to quickly duplicate any existing form and customize columns without rebuilding from scratch!
+      {/* Info card describing the specific workflow rules */}
+      {isAdministrative ? (
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 18px', marginBottom: '20px', fontSize: '13px', color: '#334155' }}>
+          <strong>ℹ️ Single Form Paradigm (Administrative Flow):</strong> Administration has <strong>ONE single form overall</strong> for the university. The single form is divided into sections (e.g. Part A, Part B, Part C), and each section is assigned to a specific Administrative Post (e.g. Registrar, HR, Dean Student Welfare). Administrative users mapped to a post will fill only their assigned section(s). <em>(No "Copy Table" is needed since there is only one form.)</em>
         </div>
-        <span style={{ fontSize: '12px', fontWeight: 700, padding: '3px 8px', background: '#dcfce7', color: '#15803d', borderRadius: '6px' }}>
-          {universitySchools.length} Schools Configured
-        </span>
-      </div>
+      ) : (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 18px', marginBottom: '20px', fontSize: '13px', color: '#166534', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <strong>💡 School-Level Form Flexibility (Academic Flow):</strong> Within this university, schools can either share the <em>same form</em> (Condition 2), or have <em>different custom forms</em> (Condition 1). Use <strong>"📋 Copy Form"</strong> to quickly duplicate any existing form and customize columns without rebuilding from scratch!
+          </div>
+          <span style={{ fontSize: '12px', fontWeight: 700, padding: '3px 8px', background: '#dcfce7', color: '#15803d', borderRadius: '6px' }}>
+            {universitySchools.length} Schools Configured
+          </span>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-5">
@@ -328,26 +349,169 @@ export const SchemaManager = ({
         </div>
       ) : schemas.length === 0 ? (
         <div className="card shadow-sm p-5 text-center bg-white" style={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-          <h4 className="fw-bold text-dark">No form schemas configured yet</h4>
-          <p className="text-muted">Create your first Academic or Administrative audit schema to begin building.</p>
+          <h4 className="fw-bold text-dark">
+            {isAdministrative ? 'No Administrative Form created yet' : 'No Academic form schemas configured yet'}
+          </h4>
+          <p className="text-muted">
+            {isAdministrative
+              ? 'Create the single unified administrative appraisal form for this university to begin configuring sections for administrative posts.'
+              : 'Create your first Academic audit schema to begin building forms for schools.'}
+          </p>
           <div>
             <button
               className="btn btn-primary px-4 py-2"
               style={{ borderRadius: '8px', background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
               onClick={() => handleOpenCreateModal()}
             >
-              + Create First Form Schema
+              {isAdministrative ? '+ Create Single Administrative Form' : '+ Create First Academic Schema'}
             </button>
           </div>
         </div>
+      ) : isAdministrative ? (
+        /* Single Administrative Form View (Streamlined, no school clutter) */
+        <div>
+          {selectedSchema && (
+            <div className="card shadow-sm" style={{ borderRadius: '12px', border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }}>
+              <div style={{ padding: '18px 24px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <h3 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '18px' }}>{selectedSchema.name}</h3>
+                    <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 8px', borderRadius: '6px', background: '#dbeafe', color: '#1e40af' }}>
+                      Single Form (University-Wide)
+                    </span>
+                  </div>
+                  <div style={{ marginTop: '4px', fontSize: '13px', color: '#64748b' }}>
+                    Divided into sections mapped to administrative posts (Registrar, HR, Dean Student Welfare, Dean Placement, CFO, etc.)
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    style={{ padding: '8px 18px', borderRadius: '8px', border: 'none', background: '#059669', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+                    onClick={() => handleCreateDraft(selectedSchema.id)}
+                  >
+                    + Open / Create Draft Version
+                  </button>
+                </div>
+              </div>
+
+              {/* Version History Table */}
+              <div style={{ padding: '16px 24px 8px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <span style={{ fontWeight: 700, fontSize: '13.5px', color: '#0f172a' }}>Form Version History</span>
+              </div>
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
+                      <th style={{ padding: '12px 18px', fontWeight: 700 }}>Version</th>
+                      <th style={{ padding: '12px 18px', fontWeight: 700 }}>Status</th>
+                      <th style={{ padding: '12px 18px', fontWeight: 700 }}>Academic Year</th>
+                      <th style={{ padding: '12px 18px', fontWeight: 700 }}>Published By</th>
+                      <th style={{ padding: '12px 18px', fontWeight: 700 }}>Published Date</th>
+                      <th style={{ padding: '12px 18px', fontWeight: 700, textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {versions.map((v) => {
+                      const isDraft = String(v.status || '').toUpperCase() === 'DRAFT';
+                      const isActive = v.id === selectedSchema.activeVersionId;
+                      return (
+                        <tr key={v.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 18px', fontWeight: 700 }}>
+                            V{v.versionNumber}{' '}
+                            {isActive && <span style={{ fontSize: '10px', padding: '2px 6px', background: '#2563eb', color: '#fff', borderRadius: '4px', marginLeft: '4px' }}>ACTIVE</span>}
+                          </td>
+                          <td style={{ padding: '14px 18px' }}>
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                padding: '3px 8px',
+                                borderRadius: '5px',
+                                background: isDraft ? '#fef3c7' : isActive ? '#d1fae5' : '#f1f5f9',
+                                color: isDraft ? '#92400e' : isActive ? '#065f46' : '#475569',
+                              }}
+                            >
+                              {v.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 18px' }}>{v.academicYear || '2025-26'}</td>
+                          <td style={{ padding: '14px 18px' }}>{v.publishedBy || '-'}</td>
+                          <td style={{ padding: '14px 18px' }}>
+                            {v.publishedAt ? new Date(v.publishedAt).toLocaleDateString() : '-'}
+                          </td>
+                          <td style={{ padding: '14px 18px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '6px' }}>
+                              {isDraft ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '12px', cursor: 'pointer' }}
+                                    onClick={() => onOpenBuilder(v.id)}
+                                  >
+                                    🛠️ Edit Form & Assign Sections
+                                  </button>
+                                  <button
+                                    type="button"
+                                    style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', cursor: 'pointer' }}
+                                    onClick={() => handleDeleteVersion(v)}
+                                    title="Delete this draft version"
+                                  >
+                                    🗑️
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
+                                    onClick={() => onOpenPreview(v.id)}
+                                  >
+                                    👁️ View
+                                  </button>
+                                  {!isActive && (
+                                    <button
+                                      type="button"
+                                      style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #fde68a', background: '#fffbeb', color: '#92400e', fontWeight: 600, fontSize: '12px', cursor: 'pointer' }}
+                                      onClick={() => handleRollback(v.id)}
+                                    >
+                                      Rollback
+                                    </button>
+                                  )}
+                                  {versions.length > 1 && (
+                                    <button
+                                      type="button"
+                                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', cursor: 'pointer' }}
+                                      onClick={() => handleDeleteVersion(v)}
+                                      title="Delete this version"
+                                    >
+                                      🗑️
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
+        /* Academic Flow View (Multi-schema, school scope assignments, copy form) */
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1.2fr) 2fr', gap: '20px' }}>
           {/* Left Column: Schema List */}
           <div>
             <div className="card shadow-sm" style={{ borderRadius: '12px', border: '1px solid #e2e8f0', background: '#fff', overflow: 'hidden' }}>
               <div style={{ padding: '14px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, color: '#0f172a' }}>Form Schemas ({schemas.length})</span>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>Click to manage</span>
+                <span style={{ fontWeight: 700, color: '#0f172a' }}>Academic Schemas ({schemas.length})</span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>Click to select</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {schemas.map((s) => {
@@ -381,12 +545,6 @@ export const SchemaManager = ({
                           }}
                         >
                           v{s.activeVersionNumber || 1}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>
-                          Type: <strong>{s.auditType}</strong>
                         </span>
                       </div>
 
@@ -599,7 +757,11 @@ export const SchemaManager = ({
           <div style={{ width: '100%', maxWidth: '560px', maxHeight: '90vh', background: '#fff', borderRadius: '12px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h5 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '16px' }}>
-                {cloneFromSchemaId ? '📋 Copy & Duplicate Form Schema' : '➕ Create New Form Schema'}
+                {cloneFromSchemaId
+                  ? '📋 Copy & Duplicate Form Schema'
+                  : isAdministrative
+                    ? '➕ Create Single Administrative Form'
+                    : '➕ Create New Academic Form Schema'}
               </h5>
               <button
                 type="button"
@@ -612,61 +774,49 @@ export const SchemaManager = ({
             <form onSubmit={handleCreateSchemaSubmit} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ padding: '20px', overflowY: 'auto', display: 'grid', gap: '14px' }}>
                 
-                {/* Clone From Source Dropdown */}
-                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
-                  <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', marginBottom: '4px', color: '#1e40af' }}>
-                    📋 Base on Existing Form Structure (Avoid Rework)
-                  </label>
-                  <select
-                    style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px' }}
-                    value={cloneFromSchemaId}
-                    onChange={(e) => {
-                      const sId = e.target.value;
-                      setCloneFromSchemaId(sId);
-                      if (sId) {
-                        const src = schemas.find((s) => String(s.id) === String(sId));
-                        if (src) {
-                          setNewSchemaForm({
-                            auditType: src.auditType || 'academic',
-                            name: `${src.name} (Copy)`,
-                            description: src.description || '',
-                          });
+                {/* Clone From Source Dropdown (Academic Only) */}
+                {!isAdministrative && (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
+                    <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', marginBottom: '4px', color: '#1e40af' }}>
+                      📋 Base on Existing Form Structure (Avoid Rework)
+                    </label>
+                    <select
+                      style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px' }}
+                      value={cloneFromSchemaId}
+                      onChange={(e) => {
+                        const sId = e.target.value;
+                        setCloneFromSchemaId(sId);
+                        if (sId) {
+                          const src = schemas.find((s) => String(s.id) === String(sId));
+                          if (src) {
+                            setNewSchemaForm({
+                              auditType: 'academic',
+                              name: `${src.name} (Copy)`,
+                              description: src.description || '',
+                            });
+                          }
                         }
-                      }
-                    }}
-                  >
-                    <option value="">-- Start Fresh From Scratch (Blank Form) --</option>
-                    {schemas.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        Copy from: {s.name} ({s.auditType.toUpperCase()})
-                      </option>
-                    ))}
-                  </select>
-                  <small style={{ color: '#64748b', fontSize: '11.5px', display: 'block', marginTop: '4px' }}>
-                    Selecting an existing form will copy all sections, tables, and columns so you only need to modify what changes.
-                  </small>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Audit Category / Type*</label>
-                  <select
-                    style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px' }}
-                    value={newSchemaForm.auditType}
-                    onChange={(e) =>
-                      setNewSchemaForm({ ...newSchemaForm, auditType: e.target.value })
-                    }
-                  >
-                    <option value="academic">Academic Audit (Schools / Departments)</option>
-                    <option value="administrative">Administrative Audit (University Offices)</option>
-                  </select>
-                </div>
+                      }}
+                    >
+                      <option value="">-- Start Fresh From Scratch (Blank Form) --</option>
+                      {schemas.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          Copy from: {s.name}
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: '#64748b', fontSize: '11.5px', display: 'block', marginTop: '4px' }}>
+                      Selecting an existing form will copy all sections, tables, and columns so you only need to modify what changes.
+                    </small>
+                  </div>
+                )}
 
                 <div>
                   <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Schema Title / Name*</label>
                   <input
                     type="text"
                     style={{ width: '100%', height: '38px', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '0 10px', fontSize: '13px', boxSizing: 'border-box' }}
-                    placeholder="e.g. School of Engineering Appraisal 2025-26"
+                    placeholder={isAdministrative ? 'e.g. University Administrative Appraisal Form 2025-26' : 'e.g. School of Engineering Appraisal 2025-26'}
                     required
                     value={newSchemaForm.name}
                     onChange={(e) =>
@@ -675,68 +825,70 @@ export const SchemaManager = ({
                   />
                 </div>
 
-                {/* School Scope Selection (Condition 1 vs Condition 2) */}
-                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', background: '#fafafa' }}>
-                  <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', marginBottom: '6px', color: '#0f172a' }}>
-                    🏫 Form Assignment & Scope:
-                  </label>
-                  <div style={{ display: 'flex', gap: '16px', marginBottom: '10px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name="schemaScope"
-                        checked={newSchemaScope === 'ALL'}
-                        onChange={() => setNewSchemaScope('ALL')}
-                      />
-                      <span><strong>All Schools (Default shared form)</strong></span>
+                {/* School Scope Selection (Academic Only) */}
+                {!isAdministrative && (
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', background: '#fafafa' }}>
+                    <label style={{ display: 'block', fontWeight: 700, fontSize: '13px', marginBottom: '6px', color: '#0f172a' }}>
+                      🏫 Form Assignment & Scope:
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name="schemaScope"
-                        checked={newSchemaScope === 'SPECIFIC'}
-                        onChange={() => setNewSchemaScope('SPECIFIC')}
-                      />
-                      <span><strong>Specific School(s) only</strong></span>
-                    </label>
-                  </div>
-
-                  {newSchemaScope === 'SPECIFIC' && (
-                    <div style={{ marginTop: '8px', borderTop: '1px solid #e2e8f0', paddingTop: '8px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
-                        Select the school(s) that will use this form:
-                      </div>
-                      {universitySchools.length === 0 ? (
-                        <p style={{ color: '#dc2626', fontSize: '12px', margin: 0 }}>
-                          No schools configured yet. Please add schools in the "University Schools & Departments" tab first.
-                        </p>
-                      ) : (
-                        <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'grid', gap: '6px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px' }}>
-                          {universitySchools.map((sch) => {
-                            const isChecked = selectedSchoolCodes.includes(sch.code) || selectedSchoolCodes.includes(sch.name);
-                            return (
-                              <label key={sch.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', cursor: 'pointer' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => handleToggleSchoolCode(sch.code || sch.name)}
-                                />
-                                <span><strong>{sch.name}</strong> <span style={{ color: '#64748b' }}>({sch.code})</span></span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
+                    <div style={{ display: 'flex', gap: '16px', marginBottom: '10px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="schemaScope"
+                          checked={newSchemaScope === 'ALL'}
+                          onChange={() => setNewSchemaScope('ALL')}
+                        />
+                        <span><strong>All Schools (Default shared form)</strong></span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="schemaScope"
+                          checked={newSchemaScope === 'SPECIFIC'}
+                          onChange={() => setNewSchemaScope('SPECIFIC')}
+                        />
+                        <span><strong>Specific School(s) only</strong></span>
+                      </label>
                     </div>
-                  )}
-                </div>
+
+                    {newSchemaScope === 'SPECIFIC' && (
+                      <div style={{ marginTop: '8px', borderTop: '1px solid #e2e8f0', paddingTop: '8px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '6px' }}>
+                          Select the school(s) that will use this form:
+                        </div>
+                        {universitySchools.length === 0 ? (
+                          <p style={{ color: '#dc2626', fontSize: '12px', margin: 0 }}>
+                            No schools configured yet. Please add schools in the "University Schools & Departments" tab first.
+                          </p>
+                        ) : (
+                          <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'grid', gap: '6px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px' }}>
+                            {universitySchools.map((sch) => {
+                              const isChecked = selectedSchoolCodes.includes(sch.code) || selectedSchoolCodes.includes(sch.name);
+                              return (
+                                <label key={sch.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', cursor: 'pointer' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => handleToggleSchoolCode(sch.code || sch.name)}
+                                  />
+                                  <span><strong>{sch.name}</strong> <span style={{ color: '#64748b' }}>({sch.code})</span></span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '4px' }}>Description</label>
                   <textarea
                     style={{ width: '100%', borderRadius: '7px', border: '1px solid #cbd5e1', padding: '8px 10px', fontSize: '13px', boxSizing: 'border-box' }}
                     rows={2}
-                    placeholder="Form details or specific school notes..."
+                    placeholder="Form details or specific notes..."
                     value={newSchemaForm.description}
                     onChange={(e) =>
                       setNewSchemaForm({ ...newSchemaForm, description: e.target.value })
@@ -765,7 +917,7 @@ export const SchemaManager = ({
         </div>
       )}
 
-      {/* Edit Scope Modal */}
+      {/* Edit Scope Modal (Academic Only) */}
       {showEditScopeModal && editScopeSchema && (
         <div
           style={{

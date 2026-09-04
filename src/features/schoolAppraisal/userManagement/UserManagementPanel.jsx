@@ -5,7 +5,7 @@ import { createUser, deleteUser, fetchUsers, updateUser } from "../../../api/use
 import { getAttachmentUrl } from "../../../utils/attachment";
 import { formatDateDDMMYYYY } from "../../../utils/dateFormat";
 import { LoadingState } from "../components/LoadingState";
-import { getUniversitySchools } from "../formStudio/formStudioApi";
+import { getUniversitySchools, getUniversityPosts } from "../formStudio/formStudioApi";
 import {
   ADMINISTRATIVE_POSTS,
   SCHOOL_OPTIONS,
@@ -235,6 +235,7 @@ const canDeleteUser = (user = {}) => user.accountType === "auditor" && !user.del
 export default function UserManagementPanel({ currentUser }) {
   const [users, setUsers] = useState([]);
   const [schools, setSchools] = useState([]);
+  const [posts, setPosts] = useState(ADMINISTRATIVE_POSTS);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -253,18 +254,24 @@ export default function UserManagementPanel({ currentUser }) {
   const [avatarPreviewUser, setAvatarPreviewUser] = useState(null);
   const [showDeleted, setShowDeleted] = useState(false);
 
-  const fetchUniversitySchools = async () => {
+  const fetchUniversityMetadata = async () => {
     const uId = currentUser?.universityId || sessionStorage.getItem("universityId") || 1;
     try {
-      const data = await getUniversitySchools(uId);
-      setSchools(data || []);
+      const [schoolData, postData] = await Promise.all([
+        getUniversitySchools(uId),
+        getUniversityPosts(uId),
+      ]);
+      setSchools(schoolData || []);
+      if (postData && postData.length > 0) {
+        setPosts(postData.map((p) => ({ value: p.code.toLowerCase(), label: p.name })));
+      }
     } catch (err) {
-      console.error("Failed to load university schools:", err);
+      console.error("Failed to load university metadata:", err);
     }
   };
 
   useEffect(() => {
-    fetchUniversitySchools();
+    fetchUniversityMetadata();
   }, [currentUser?.universityId]);
   const filteredUsers = useMemo(() =>
     users.filter((user) =>
@@ -366,7 +373,7 @@ export default function UserManagementPanel({ currentUser }) {
     setErrors({});
     setStatus("");
     setShowForm(true);
-    fetchUniversitySchools();
+    fetchUniversityMetadata();
   };
 
   const closeForm = () => {
@@ -670,11 +677,12 @@ export default function UserManagementPanel({ currentUser }) {
                     <AdministrativePostMultiSelect
                       selected={form.administrativePosts}
                       onToggle={toggleAdministrativePost}
+                      posts={posts}
                     />
                   ) : (
                     <select className="audit-control" style={styles.control} value={form.post} onChange={(event) => updateField("post", event.target.value)}>
                       <option value="">Select post</option>
-                      {ADMINISTRATIVE_POSTS.map((post) => <option key={post.value} value={post.value}>{post.label}</option>)}
+                      {posts.map((post) => <option key={post.value} value={post.value}>{post.label}</option>)}
                     </select>
                   )}
                 </Field>
@@ -972,11 +980,12 @@ export default function UserManagementPanel({ currentUser }) {
                     <AdministrativePostMultiSelect
                       selected={editForm.administrativePosts}
                       onToggle={toggleEditAdministrativePost}
+                      posts={posts}
                     />
                   ) : (
                     <select className="audit-control" style={styles.control} value={editForm.post} onChange={(event) => updateEditField("post", event.target.value)}>
                       <option value="">Select post</option>
-                      {ADMINISTRATIVE_POSTS.map((post) => <option key={post.value} value={post.value}>{post.label}</option>)}
+                      {posts.map((post) => <option key={post.value} value={post.value}>{post.label}</option>)}
                     </select>
                   )}
                 </Field>
@@ -1226,7 +1235,7 @@ function AcademicSchoolMultiSelect({ selected, onToggle, schools = [] }) {
   );
 }
 
-function AdministrativePostMultiSelect({ selected, onToggle }) {
+function AdministrativePostMultiSelect({ selected, onToggle, posts = ADMINISTRATIVE_POSTS }) {
   const summary = selected.length
     ? `${selected.length} post${selected.length === 1 ? "" : "s"} selected`
     : "Select administrative posts";
@@ -1238,7 +1247,7 @@ function AdministrativePostMultiSelect({ selected, onToggle }) {
         <span aria-hidden="true">▾</span>
       </summary>
       <div style={styles.multiSelectMenu}>
-        {ADMINISTRATIVE_POSTS.map((post) => (
+        {posts.map((post) => (
           <label key={post.value} style={styles.multiSelectOption}>
             <input
               type="checkbox"
@@ -1252,7 +1261,7 @@ function AdministrativePostMultiSelect({ selected, onToggle }) {
       </div>
       {!!selected.length && (
         <div style={styles.selectedPostList}>
-          {selected.map((post) => <span key={post}>{postLabelFor(post)}</span>)}
+          {selected.map((post) => <span key={post}>{posts.find((p) => p.value === post)?.label || postLabelFor(post)}</span>)}
         </div>
       )}
     </details>
